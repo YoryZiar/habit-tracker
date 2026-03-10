@@ -1,0 +1,5 @@
+{
+  "name": "Weekly Habit Tracker",
+  "description": "A weekly habit tracker with gamification, streaks, and Google Sheets integration.",
+  "requestFramePermissions": []
+}
