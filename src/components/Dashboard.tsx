@@ -3,20 +3,67 @@ import { useAuthStore, useHabitStore } from '../store/useHabitStore';
 import { getWeekDates, formatDate } from '../utils/dateUtils';
 import HabitRow from './HabitRow';
 import AddHabitModal from './AddHabitModal';
-import { LogOut, Plus, Flame, Trophy, Calendar, ListTodo } from 'lucide-react';
+import EditHabitModal from './EditHabitModal';
+import HabitCalendarModal from './HabitCalendarModal';
+import { LogOut, Plus, Flame, Trophy, Calendar, ListTodo, Star, Medal, TrendingUp, Menu, X } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
 
 interface DashboardProps {
-  onNavigate: (page: 'dashboard' | 'todos') => void;
+  onNavigate: (page: 'dashboard' | 'todos' | 'history') => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const logout = useAuthStore(state => state.logout);
-  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak } = useHabitStore();
+  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, badges, reorderHabits } = useHabitStore();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [selectedChartHabitId, setSelectedChartHabitId] = useState<string>('all');
+  const [editingHabit, setEditingHabit] = useState<any>(null);
+  const [calendarHabit, setCalendarHabit] = useState<any>(null);
+  const [deletingHabit, setDeletingHabit] = useState<any>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      const oldIndex = habits.findIndex((h) => h.id === active.id);
+      const newIndex = habits.findIndex((h) => h.id === over.id);
+
+      const newHabits = arrayMove(habits, oldIndex, newIndex);
+      reorderHabits(newHabits);
+    }
+  };
 
   useEffect(() => {
     fetchHabits();
@@ -25,32 +72,56 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   }, [fetchHabits]);
 
   useEffect(() => {
-    // Generate data for chart
-    if (habits.length > 0 && weekDates.length > 0) {
-      const data = weekDates.map(date => {
-        const dateStr = formatDate(date);
-        let completed = 0;
-        let total = habits.length;
+    // Generate data for chart (Last 4 weeks)
+    if (habits.length > 0) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-        habits.forEach(habit => {
-          const record = habit.records[dateStr];
-          if (habit.type === 'boolean' && record === 'selesai') {
-            completed++;
-          } else if (habit.type === 'quantitative' && Number(record) >= habit.target) {
-            completed++;
-          }
-        });
+      const data = [];
+      const habitsToProcess = selectedChartHabitId === 'all' 
+        ? habits 
+        : habits.filter(h => h.id === selectedChartHabitId);
+
+      for (let w = 3; w >= 0; w--) {
+        const weekStart = new Date(today);
+        weekStart.setDate(today.getDate() - (w * 7 + 6));
+        const weekEnd = new Date(today);
+        weekEnd.setDate(today.getDate() - (w * 7));
+
+        let completed = 0;
+        let total = 0;
+
+        for (let d = 0; d <= 6; d++) {
+          const currentDate = new Date(weekStart);
+          currentDate.setDate(weekStart.getDate() + d);
+          const dateStr = formatDate(currentDate);
+
+          habitsToProcess.forEach(habit => {
+            total++;
+            const record = habit.records[dateStr];
+            if (habit.type === 'boolean' && record === 'selesai') {
+              completed++;
+            } else if (habit.type === 'quantitative' && Number(record) >= habit.target) {
+              completed++;
+            }
+          });
+        }
 
         const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
         
-        return {
-          name: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][date.getDay() === 0 ? 6 : date.getDay() - 1],
+        const startLabel = `${weekStart.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][weekStart.getMonth()]}`;
+        const endLabel = `${weekEnd.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][weekEnd.getMonth()]}`;
+
+        data.push({
+          name: w === 0 ? 'Minggu Ini' : `${startLabel} - ${endLabel}`,
           persentase: percentage
-        };
-      });
+        });
+      }
       setChartData(data);
+    } else {
+      setChartData([]);
     }
-  }, [habits, weekDates]);
+  }, [habits, selectedChartHabitId]);
 
   if (isLoading) {
     return (
@@ -71,13 +142,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Weekly Habit Tracker</h1>
           </div>
-          <div className="flex items-center gap-4">
+          
+          {/* Desktop Navigation */}
+          <div className="hidden sm:flex items-center gap-4">
+            <button
+              onClick={() => onNavigate('history')}
+              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors text-sm font-medium"
+            >
+              <TrendingUp className="w-4 h-4" />
+              <span>Riwayat</span>
+            </button>
+            <div className="w-px h-6 bg-gray-200"></div>
             <button
               onClick={() => onNavigate('todos')}
               className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors text-sm font-medium"
             >
               <ListTodo className="w-4 h-4" />
-              <span className="hidden sm:inline">Todo List</span>
+              <span>Todo List</span>
             </button>
             <div className="w-px h-6 bg-gray-200"></div>
             <button
@@ -85,10 +166,58 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium shrink-0"
             >
               <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Keluar</span>
+              <span>Keluar</span>
+            </button>
+          </div>
+
+          {/* Mobile Menu Button */}
+          <div className="sm:hidden flex items-center">
+            <button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
+
+        {/* Mobile Navigation Dropdown */}
+        {isMobileMenuOpen && (
+          <div className="sm:hidden border-t border-gray-100 bg-white absolute w-full shadow-lg">
+            <div className="px-4 pt-2 pb-4 space-y-1">
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onNavigate('history');
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+              >
+                <TrendingUp className="w-5 h-5" />
+                Riwayat
+              </button>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  onNavigate('todos');
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
+              >
+                <ListTodo className="w-5 h-5" />
+                Todo List
+              </button>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  setIsLogoutModalOpen(true);
+                }}
+                className="flex items-center gap-3 w-full px-3 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors font-medium"
+              >
+                <LogOut className="w-5 h-5" />
+                Keluar
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -99,24 +228,97 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         )}
 
         {/* Gamification Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-orange-100 flex items-center gap-4">
-            <div className="bg-orange-100 p-4 rounded-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <motion.div 
+            className="bg-white rounded-2xl p-6 shadow-sm border border-orange-100 flex items-center gap-4 relative overflow-hidden"
+            animate={useHabitStore.getState().streakExtended ? { scale: [1, 1.05, 1], borderColor: ['#ffedd5', '#f97316', '#ffedd5'] } : {}}
+            transition={{ duration: 0.5 }}
+            onAnimationComplete={() => useHabitStore.getState().clearStreakAnimations()}
+          >
+            {useHabitStore.getState().streakExtended && (
+              <motion.div 
+                className="absolute inset-0 bg-orange-500/10"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 0.5 }}
+              />
+            )}
+            <div className="bg-orange-100 p-4 rounded-full shrink-0 relative">
               <Flame className="w-8 h-8 text-orange-500" />
+              {useHabitStore.getState().streakExtended && (
+                <motion.div
+                  className="absolute -top-1 -right-1 text-orange-500 font-bold text-xs bg-white rounded-full px-1 shadow-sm"
+                  initial={{ y: 10, opacity: 0 }}
+                  animate={{ y: -10, opacity: [0, 1, 0] }}
+                  transition={{ duration: 1 }}
+                >
+                  +1
+                </motion.div>
+              )}
             </div>
             <div>
               <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Current Streak</p>
               <p className="text-3xl font-bold text-gray-900">{currentStreak} <span className="text-lg font-normal text-gray-500">Hari</span></p>
             </div>
-          </div>
+          </motion.div>
           
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-yellow-100 flex items-center gap-4">
-            <div className="bg-yellow-100 p-4 rounded-full">
+          <motion.div 
+            className="bg-white rounded-2xl p-6 shadow-sm border border-yellow-100 flex items-center gap-4 relative overflow-hidden"
+            animate={useHabitStore.getState().newBestStreak ? { scale: [1, 1.05, 1], borderColor: ['#fef9c3', '#eab308', '#fef9c3'] } : {}}
+            transition={{ duration: 0.5 }}
+          >
+            {useHabitStore.getState().newBestStreak && (
+              <motion.div 
+                className="absolute inset-0 bg-yellow-500/10"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 0.5 }}
+              />
+            )}
+            <div className="bg-yellow-100 p-4 rounded-full shrink-0 relative">
               <Trophy className="w-8 h-8 text-yellow-500" />
+              {useHabitStore.getState().newBestStreak && (
+                <motion.div
+                  className="absolute -top-2 -right-2 text-yellow-500 font-bold text-xs bg-white rounded-full px-1 shadow-sm border border-yellow-200"
+                  initial={{ scale: 0, rotate: -45 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  transition={{ type: "spring", stiffness: 300, damping: 12 }}
+                >
+                  NEW!
+                </motion.div>
+              )}
             </div>
             <div>
               <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Best Streak</p>
               <p className="text-3xl font-bold text-gray-900">{bestStreak} <span className="text-lg font-normal text-gray-500">Hari</span></p>
+            </div>
+          </motion.div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-blue-100 flex items-center gap-4">
+            <div className="bg-blue-100 p-4 rounded-full shrink-0">
+              <Star className="w-8 h-8 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Points</p>
+              <p className="text-3xl font-bold text-gray-900">{totalPoints || 0} <span className="text-lg font-normal text-gray-500">Pts</span></p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-purple-100 flex flex-col justify-center">
+            <div className="flex items-center gap-2 mb-2">
+              <Medal className="w-5 h-5 text-purple-500" />
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Badges</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(!badges || badges.length === 0) ? (
+                <span className="text-sm text-gray-400 italic">Belum ada badge</span>
+              ) : (
+                badges.map((badge, idx) => (
+                  <span key={idx} className="bg-purple-100 text-purple-700 text-xs font-bold px-2.5 py-1 rounded-full">
+                    {badge}
+                  </span>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -135,9 +337,28 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           </div>
           
           <div className="space-y-4">
-            {habits.map(habit => (
-              <HabitRow key={habit.id} habit={habit} weekDates={weekDates} />
-            ))}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+              modifiers={[restrictToVerticalAxis]}
+            >
+              <SortableContext
+                items={habits.map((h) => h.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                {habits.map(habit => (
+                  <HabitRow 
+                    key={habit.id} 
+                    habit={habit} 
+                    weekDates={weekDates} 
+                    onEdit={() => setEditingHabit(habit)}
+                    onCalendar={() => setCalendarHabit(habit)}
+                    onDelete={() => setDeletingHabit(habit)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
             
             {habits.length === 0 && (
               <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
@@ -151,7 +372,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         <div className="mb-8">
           {/* Analytics Chart */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
-            <h2 className="text-xl font-bold text-gray-800 mb-6">Tren Keberhasilan Harian</h2>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <h2 className="text-xl font-bold text-gray-800">Tren Keberhasilan (1 Bulan Terakhir)</h2>
+              <select
+                value={selectedChartHabitId}
+                onChange={(e) => setSelectedChartHabitId(e.target.value)}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block p-2.5 min-w-[200px]"
+              >
+                <option value="all">Semua Habit</option>
+                {habits.map(h => (
+                  <option key={h.id} value={h.id}>{h.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="h-[350px] w-full flex items-center justify-center">
               {isLoading || habits.length === 0 ? (
                 <p className="text-gray-500 text-center">Grafik Tren Habit akan ditampilkan di sini</p>
@@ -185,6 +418,51 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
       />
+
+      {editingHabit && (
+        <EditHabitModal 
+          isOpen={!!editingHabit} 
+          onClose={() => setEditingHabit(null)} 
+          habit={editingHabit} 
+        />
+      )}
+
+      {calendarHabit && (
+        <HabitCalendarModal
+          isOpen={!!calendarHabit}
+          onClose={() => setCalendarHabit(null)}
+          habit={calendarHabit}
+        />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingHabit && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Hapus Habit</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              Apakah Anda yakin ingin menghapus habit "{deletingHabit.name}"? Semua data riwayat untuk habit ini akan hilang dan tidak dapat dikembalikan.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setDeletingHabit(null)}
+                className="flex-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium py-2 rounded-lg transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  useHabitStore.getState().deleteHabit(deletingHabit.id);
+                  setDeletingHabit(null);
+                }}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm"
+              >
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Logout Confirmation Modal */}
       {isLogoutModalOpen && (

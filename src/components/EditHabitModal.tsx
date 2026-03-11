@@ -16,6 +16,8 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
   const [type, setType] = useState<'boolean' | 'quantitative'>(habit.type);
   const [target, setTarget] = useState<number | ''>(habit.target);
   const [unit, setUnit] = useState(habit.unit || '');
+  const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'specific_days'>(habit.recurrence || 'daily');
+  const [specificDays, setSpecificDays] = useState<number[]>(habit.specificDays || []);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -24,6 +26,8 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
       setType(habit.type);
       setTarget(habit.target);
       setUnit(habit.unit || '');
+      setRecurrence(habit.recurrence || 'daily');
+      setSpecificDays(habit.specificDays || []);
       setError('');
     }
   }, [isOpen, habit]);
@@ -49,12 +53,19 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
       return;
     }
 
+    if (recurrence === 'specific_days' && specificDays.length === 0) {
+      setError('Pilih setidaknya satu hari untuk repetisi spesifik');
+      return;
+    }
+
     try {
       await editHabit(habit.id, {
         name: name.trim(),
         type,
         target: Number(target),
         unit: type === 'quantitative' ? unit.trim() : undefined,
+        recurrence,
+        specificDays: recurrence === 'specific_days' ? specificDays : undefined,
       });
       onClose();
     } catch (err) {
@@ -62,8 +73,16 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
     }
   };
 
+  const toggleDay = (day: number) => {
+    setSpecificDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const daysOfWeek = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Edit Habit</h2>
@@ -119,6 +138,38 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
                 Angka / Kuantitas
               </button>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Repetisi</label>
+            <select
+              value={recurrence}
+              onChange={(e) => setRecurrence(e.target.value as any)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors mb-3"
+            >
+              <option value="daily">Setiap Hari</option>
+              <option value="weekly">Mingguan</option>
+              <option value="specific_days">Hari Tertentu</option>
+            </select>
+
+            {recurrence === 'specific_days' && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {daysOfWeek.map((day, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => toggleDay(index)}
+                    className={`w-10 h-10 rounded-full text-sm font-medium transition-colors ${
+                      specificDays.includes(index)
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

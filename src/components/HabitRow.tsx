@@ -1,20 +1,46 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HabitRecord } from '../services/googleSheetsService';
 import { formatDate } from '../utils/dateUtils';
 import { useHabitStore } from '../store/useHabitStore';
-import { Check, X, Minus, Pencil, Trash2 } from 'lucide-react';
+import { Check, X, Minus, Pencil, Trash2, CalendarDays, GripVertical } from 'lucide-react';
 import EditHabitModal from './EditHabitModal';
+import HabitCalendarModal from './HabitCalendarModal';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface HabitRowProps {
   habit: HabitRecord;
   weekDates: Date[];
+  onEdit?: () => void;
+  onCalendar?: () => void;
+  onDelete?: () => void;
 }
 
-const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates }) => {
+const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalendar, onDelete }) => {
   const updateRecord = useHabitStore(state => state.updateRecord);
   const deleteHabit = useHabitStore(state => state.deleteHabit);
+  // Local state kept for backward compatibility if used without props
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: habit.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative' as const,
+  };
 
   // Menghitung progress mingguan
   const calculateProgress = () => {
@@ -67,29 +93,50 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates }) => {
   };
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-4 transition-all hover:shadow-md">
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`bg-white rounded-xl shadow-sm border ${isDragging ? 'border-green-400 shadow-md' : 'border-gray-100'} overflow-hidden mb-4 transition-all hover:shadow-md relative`}
+    >
       <div className="p-4 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-gray-800 text-lg">{habit.name}</h3>
-            <button 
-              onClick={() => setIsEditModalOpen(true)}
-              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
-              title="Edit Habit"
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => setIsDeleteModalOpen(true)}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-              title="Hapus Habit"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+        <div className="flex items-center gap-3">
+          <button 
+            {...attributes} 
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 p-1 -ml-2"
+            title="Tarik untuk mengurutkan"
+          >
+            <GripVertical className="w-5 h-5" />
+          </button>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-gray-800 text-lg">{habit.name}</h3>
+              <button 
+                onClick={() => onCalendar ? onCalendar() : setIsCalendarModalOpen(true)}
+                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                title="Lihat Kalender"
+              >
+                <CalendarDays className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => onEdit ? onEdit() : setIsEditModalOpen(true)}
+                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                title="Edit Habit"
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button 
+                onClick={() => onDelete ? onDelete() : setIsDeleteModalOpen(true)}
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                title="Hapus Habit"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500">
+              Target: {habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}
+            </p>
           </div>
-          <p className="text-sm text-gray-500">
-            Target: {habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}
-          </p>
         </div>
         
         {/* Progress Bar */}
@@ -99,11 +146,13 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates }) => {
             <span className="font-bold text-green-600">{progress}%</span>
           </div>
           <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden">
-            <div 
-              className={`h-full rounded-full transition-all duration-500 ${
+            <motion.div 
+              className={`h-full rounded-full ${
                 progress === 100 ? 'bg-green-500' : 'bg-green-400'
               }`}
-              style={{ width: `${progress}%` }}
+              initial={{ width: 0 }}
+              animate={{ width: `${progress}%` }}
+              transition={{ type: "spring", stiffness: 50, damping: 15 }}
             />
           </div>
         </div>
@@ -116,31 +165,61 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates }) => {
             const value = habit.records[dateStr];
             
             return (
-              <div key={dateStr} className="p-2 sm:p-3 flex flex-col items-center justify-center min-h-[80px]">
+              <div key={dateStr} className="p-2 sm:p-3 flex flex-col items-center justify-center min-h-[80px] relative">
                 <span className="text-xs text-gray-500 font-medium mb-2 block">
                   {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'][index]}
                 </span>
                 
                 {habit.type === 'boolean' ? (
-                  <select
-                    value={(value as string) || ''}
-                    onChange={(e) => handleBooleanChange(dateStr, e.target.value)}
-                    className={`w-full text-xs sm:text-sm p-2 rounded-md border appearance-none text-center cursor-pointer outline-none focus:ring-2 focus:ring-green-500 transition-colors ${getStatusColor(value)}`}
+                  <motion.div 
+                    className="w-full relative"
+                    whileTap={{ scale: 0.9 }}
+                    animate={value === 'selesai' ? { scale: [1, 1.1, 1] } : {}}
+                    transition={{ duration: 0.3 }}
                   >
-                    <option value="" disabled>-</option>
-                    <option value="selesai">Selesai</option>
-                    <option value="izin">Izin</option>
-                    <option value="gagal">Gagal</option>
-                  </select>
+                    <select
+                      value={(value as string) || ''}
+                      onChange={(e) => handleBooleanChange(dateStr, e.target.value)}
+                      className={`w-full text-xs sm:text-sm p-2 rounded-md border appearance-none text-center cursor-pointer outline-none focus:ring-2 focus:ring-green-500 transition-colors ${getStatusColor(value)}`}
+                    >
+                      <option value="" disabled>-</option>
+                      <option value="selesai">Selesai</option>
+                      <option value="izin">Izin</option>
+                      <option value="gagal">Gagal</option>
+                    </select>
+                    {value === 'selesai' && (
+                      <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="absolute -top-1 -right-1 bg-green-500 text-white rounded-full p-0.5 shadow-sm"
+                      >
+                        <Check className="w-3 h-3" />
+                      </motion.div>
+                    )}
+                  </motion.div>
                 ) : (
-                  <input
-                    type="number"
-                    min="0"
-                    value={value !== undefined ? value : ''}
-                    onChange={(e) => handleQuantitativeChange(dateStr, e.target.value)}
-                    placeholder="0"
-                    className="w-full text-center text-sm p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
-                  />
+                  <motion.div 
+                    className="w-full relative"
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <input
+                      type="number"
+                      min="0"
+                      value={value !== undefined ? value : ''}
+                      onChange={(e) => handleQuantitativeChange(dateStr, e.target.value)}
+                      placeholder="0"
+                      className="w-full text-center text-sm p-2 border border-gray-200 rounded-md focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
+                    />
+                    {value !== undefined && Number(value) >= habit.target && (
+                      <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="absolute -top-1 -right-1 bg-green-500 text-white rounded-full p-0.5 shadow-sm"
+                      >
+                        <Check className="w-3 h-3" />
+                      </motion.div>
+                    )}
+                  </motion.div>
                 )}
               </div>
             );
@@ -148,15 +227,26 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates }) => {
         </div>
       </div>
       
-      <EditHabitModal 
-        isOpen={isEditModalOpen} 
-        onClose={() => setIsEditModalOpen(false)} 
-        habit={habit} 
-      />
+      {/* Modals are rendered outside the main draggable div via portals or just fixed positioning, but since they use fixed inset-0, we just need to make sure they aren't clipped or affected by the parent's transform/z-index. React portals are best, but since we are using fixed positioning, we just need to ensure the parent doesn't trap them. By default fixed elements are relative to the viewport unless a parent has a transform. Since dnd-kit applies a transform, we should render modals conditionally and ensure they are not affected. Actually, the best way is to render them outside the draggable div. */}
+      {isEditModalOpen && (
+        <EditHabitModal 
+          isOpen={isEditModalOpen} 
+          onClose={() => setIsEditModalOpen(false)} 
+          habit={habit} 
+        />
+      )}
+
+      {isCalendarModalOpen && (
+        <HabitCalendarModal
+          isOpen={isCalendarModalOpen}
+          onClose={() => setIsCalendarModalOpen(false)}
+          habit={habit}
+        />
+      )}
 
       {/* Delete Confirmation Modal */}
       {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Hapus Habit</h3>
             <p className="text-gray-500 text-sm mb-6">

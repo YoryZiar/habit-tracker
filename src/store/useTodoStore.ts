@@ -6,11 +6,12 @@ interface TodoState {
   todos: TodoRecord[];
   isLoading: boolean;
   error: string | null;
-  fetchTodos: () => Promise<void>;
-  addTodo: (text: string) => Promise<void>;
+  fetchTodos: (retryCount?: number) => Promise<void>;
+  addTodo: (text: string, dueDate?: string) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
-  editTodo: (id: string, newText: string) => Promise<void>;
+  editTodo: (id: string, newText: string, newDueDate?: string) => Promise<void>;
+  clearCompleted: () => Promise<void>;
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
@@ -18,23 +19,31 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  fetchTodos: async () => {
+  fetchTodos: async (retryCount = 0) => {
     set({ isLoading: true, error: null });
     try {
       const todos = await googleSheetsService.getTodos();
       set({ todos, isLoading: false });
     } catch (error: any) {
-      set({ error: error.message, isLoading: false });
-      toast.error('Gagal memuat tugas');
+      if (retryCount < 2) {
+        // Auto-retry up to 2 times with a short delay
+        setTimeout(() => {
+          get().fetchTodos(retryCount + 1);
+        }, 1000 * (retryCount + 1));
+      } else {
+        set({ error: error.message || 'Gagal mengambil data Todo dari Google Sheets', isLoading: false });
+        toast.error('Gagal memuat tugas setelah beberapa percobaan');
+      }
     }
   },
 
-  addTodo: async (text: string) => {
+  addTodo: async (text: string, dueDate?: string) => {
     const newTodo: TodoRecord = {
       id: Date.now().toString(),
       text,
       completed: false,
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      dueDate
     };
     
     // Optimistic update
@@ -87,11 +96,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  editTodo: async (id: string, newText: string) => {
+  editTodo: async (id: string, newText: string, newDueDate?: string) => {
     const todoToEdit = get().todos.find(t => t.id === id);
     if (!todoToEdit) return;
 
-    const updatedTodo = { ...todoToEdit, text: newText };
+    const updatedTodo = { ...todoToEdit, text: newText, dueDate: newDueDate };
     
     // Optimistic update
     set((state) => ({
@@ -106,6 +115,26 @@ export const useTodoStore = create<TodoState>((set, get) => ({
         todos: state.todos.map(todo => todo.id === id ? todoToEdit : todo)
       }));
       toast.error('Gagal memperbarui teks tugas');
+    }
+  },
+
+  clearCompleted: async () => {
+    const completedTodos = get().todos.filter(t => t.completed);
+    if (completedTodos.length === 0) return;
+
+    // Optimistic update
+    set((state) => ({ todos: state.todos.filter(t => !t.completed) }));
+
+    try {
+      // Delete one by one since we don't have a batch delete in googleSheetsService
+      for (const todo of completedTodos) {
+        await googleSheetsService.deleteTodo(todo.id);
+      }
+      toast.success('Berhasil menghapus semua tugas yang selesai');
+    } catch (error) {
+      // Revert on failure
+      set((state) => ({ todos: [...state.todos, ...completedTodos] }));
+      toast.error('Gagal menghapus beberapa tugas');
     }
   }
 }));

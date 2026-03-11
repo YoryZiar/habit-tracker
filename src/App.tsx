@@ -8,11 +8,12 @@ import { useAuthStore } from './store/useHabitStore';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import TodoPage from './components/TodoPage';
+import HistoryPage from './components/HistoryPage';
 import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const [currentPage, setCurrentPage] = useState<'dashboard' | 'todos'>('dashboard');
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'todos' | 'history'>('dashboard');
 
   return (
     <>
@@ -21,8 +22,10 @@ export default function App() {
         <Login />
       ) : currentPage === 'dashboard' ? (
         <Dashboard onNavigate={setCurrentPage} />
-      ) : (
+      ) : currentPage === 'todos' ? (
         <TodoPage onNavigate={setCurrentPage} />
+      ) : (
+        <HistoryPage onNavigate={setCurrentPage} />
       )}
     </>
   );

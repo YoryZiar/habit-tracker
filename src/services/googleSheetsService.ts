@@ -6,6 +6,8 @@ export interface HabitRecord {
   unit?: string;
   records: Record<string, string | number>;
   createdAt: string;
+  recurrence?: 'daily' | 'weekly' | 'specific_days';
+  specificDays?: number[]; // 0 = Sunday, 1 = Monday, etc.
 }
 
 export interface TodoRecord {
@@ -13,6 +15,7 @@ export interface TodoRecord {
   text: string;
   completed: boolean;
   createdAt: string;
+  dueDate?: string;
 }
 
 const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID;
@@ -38,15 +41,15 @@ export const googleSheetsService = {
     const hasTodosSheet = infoData.sheets.some((s: any) => s.properties.title === TODO_SHEET_NAME);
 
     // Initialize Habit headers if empty
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:G1?key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:I1?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     if (!data.values || data.values.length === 0) {
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:G1?valueInputOption=RAW&key=${API_KEY}`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:I1?valueInputOption=RAW&key=${API_KEY}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [['id', 'name', 'type', 'target', 'unit', 'records', 'createdAt']] })
+        body: JSON.stringify({ values: [['id', 'name', 'type', 'target', 'unit', 'records', 'createdAt', 'recurrence', 'specificDays']] })
       });
     }
 
@@ -58,10 +61,10 @@ export const googleSheetsService = {
         body: JSON.stringify({ requests: [{ addSheet: { properties: { title: TODO_SHEET_NAME } } }] })
       });
       
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A1:D1?valueInputOption=RAW&key=${API_KEY}`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A1:E1?valueInputOption=RAW&key=${API_KEY}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [['id', 'text', 'completed', 'createdAt']] })
+        body: JSON.stringify({ values: [['id', 'text', 'completed', 'createdAt', 'dueDate']] })
       });
     }
     
@@ -73,14 +76,14 @@ export const googleSheetsService = {
     const token = localStorage.getItem('gapi_access_token');
     if (!token) throw new Error('Token tidak ditemukan');
 
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:G?key=${API_KEY}`, {
+    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
     if (!res.ok) {
       try {
         await googleSheetsService.authenticate(token);
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:G?key=${API_KEY}`, {
+        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (e) {
@@ -100,7 +103,9 @@ export const googleSheetsService = {
       target: Number(row[3]),
       unit: row[4] || '',
       records: row[5] ? JSON.parse(row[5]) : {},
-      createdAt: row[6]
+      createdAt: row[6],
+      recurrence: (row[7] as 'daily' | 'weekly' | 'specific_days') || 'daily',
+      specificDays: row[8] ? JSON.parse(row[8]) : []
     }));
   },
 
@@ -127,10 +132,12 @@ export const googleSheetsService = {
       habit.target,
       habit.unit || '',
       JSON.stringify(habit.records),
-      habit.createdAt
+      habit.createdAt,
+      habit.recurrence || 'daily',
+      JSON.stringify(habit.specificDays || [])
     ];
     
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A${actualRowNumber}:G${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A${actualRowNumber}:I${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'PUT',
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -152,10 +159,12 @@ export const googleSheetsService = {
       habit.target,
       habit.unit || '',
       JSON.stringify(habit.records),
-      habit.createdAt
+      habit.createdAt,
+      habit.recurrence || 'daily',
+      JSON.stringify(habit.specificDays || [])
     ];
     
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:G:append?valueInputOption=RAW&key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I:append?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'POST',
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -167,6 +176,36 @@ export const googleSheetsService = {
     return res.ok;
   },
   
+  // Reorder Habits (Bulk Update)
+  reorderHabits: async (habits: HabitRecord[]): Promise<boolean> => {
+    const token = localStorage.getItem('gapi_access_token');
+    if (!token) return false;
+
+    const rows = habits.map(habit => [
+      habit.id,
+      habit.name,
+      habit.type,
+      habit.target,
+      habit.unit || '',
+      JSON.stringify(habit.records),
+      habit.createdAt,
+      habit.recurrence || 'daily',
+      JSON.stringify(habit.specificDays || [])
+    ]);
+
+    // Update the entire range starting from A2
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A2:I${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
+      method: 'PUT',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ values: rows })
+    });
+
+    return resPut.ok;
+  },
+
   // Hapus Habit (DELETE via batchUpdate)
   deleteHabit: async (id: string): Promise<boolean> => {
     const token = localStorage.getItem('gapi_access_token');
@@ -210,7 +249,7 @@ export const googleSheetsService = {
     const token = localStorage.getItem('gapi_access_token');
     if (!token) throw new Error('Token tidak ditemukan');
 
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:D?key=${API_KEY}`, {
+    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -219,7 +258,7 @@ export const googleSheetsService = {
       try {
         await googleSheetsService.authenticate(token);
         // Coba fetch lagi
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:D?key=${API_KEY}`, {
+        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (e) {
@@ -236,15 +275,16 @@ export const googleSheetsService = {
       id: row[0],
       text: row[1],
       completed: row[2] === 'TRUE',
-      createdAt: row[3]
+      createdAt: row[3],
+      dueDate: row[4] || undefined
     }));
   },
 
   addTodo: async (todo: TodoRecord): Promise<boolean> => {
     const token = localStorage.getItem('gapi_access_token');
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt];
+    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || ''];
     
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:D:append?valueInputOption=RAW&key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E:append?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })
@@ -266,9 +306,9 @@ export const googleSheetsService = {
     if (rowIndex === -1) return false;
     
     const actualRowNumber = rowIndex + 1;
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt];
+    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || ''];
     
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A${actualRowNumber}:D${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A${actualRowNumber}:E${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })

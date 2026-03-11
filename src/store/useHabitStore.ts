@@ -18,11 +18,17 @@ interface HabitState {
   addHabit: (habit: Omit<HabitRecord, 'id' | 'records' | 'createdAt'>) => Promise<void>;
   editHabit: (id: string, data: Partial<Omit<HabitRecord, 'id' | 'records' | 'createdAt'>>) => Promise<void>;
   deleteHabit: (id: string) => Promise<void>;
+  reorderHabits: (newHabits: HabitRecord[]) => Promise<void>;
   
   // Gamifikasi
   currentStreak: number;
   bestStreak: number;
-  calculateStreaks: () => void;
+  totalPoints: number;
+  badges: string[];
+  streakExtended: boolean;
+  newBestStreak: boolean;
+  clearStreakAnimations: () => void;
+  calculateGamification: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -52,13 +58,19 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   error: null,
   currentStreak: 0,
   bestStreak: 0,
+  streakExtended: false,
+  newBestStreak: false,
+
+  clearStreakAnimations: () => {
+    set({ streakExtended: false, newBestStreak: false });
+  },
 
   fetchHabits: async () => {
     set({ isLoading: true, error: null });
     try {
       const data = await googleSheetsService.getHabits();
       set({ habits: data, isLoading: false });
-      get().calculateStreaks();
+      get().calculateGamification();
     } catch (error) {
       set({ error: 'Gagal mengambil data dari Google Sheets', isLoading: false });
       toast.error('Gagal mengambil data dari Google Sheets');
@@ -78,14 +90,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const newHabits = [...habits];
     newHabits[habitIndex] = updatedHabit;
     set({ habits: newHabits });
-    get().calculateStreaks();
+    get().calculateGamification();
     
     try {
       await googleSheetsService.updateHabit(updatedHabit);
     } catch (error) {
       // Revert on error
       set({ habits, error: 'Gagal menyimpan perubahan' });
-      get().calculateStreaks();
+      get().calculateGamification();
       toast.error('Gagal menyimpan perubahan ke Google Sheets');
     }
   },
@@ -100,14 +112,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const newHabits = [...habits];
     newHabits[habitIndex] = updatedHabit;
     set({ habits: newHabits });
-    get().calculateStreaks();
+    get().calculateGamification();
     
     try {
       await googleSheetsService.updateHabit(updatedHabit);
       toast.success('Habit berhasil diperbarui');
     } catch (error) {
       set({ habits, error: 'Gagal mengedit habit' });
-      get().calculateStreaks();
+      get().calculateGamification();
       toast.error('Gagal mengedit habit');
     }
   },
@@ -137,32 +149,94 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     const { habits } = get();
     const newHabits = habits.filter(h => h.id !== id);
     set({ habits: newHabits });
-    get().calculateStreaks();
+    get().calculateGamification();
     
     try {
       await googleSheetsService.deleteHabit(id);
       toast.success('Habit berhasil dihapus');
     } catch (error) {
       set({ habits, error: 'Gagal menghapus habit' });
-      get().calculateStreaks();
+      get().calculateGamification();
       toast.error('Gagal menghapus habit');
     }
   },
 
-  calculateStreaks: () => {
-    const { habits } = get();
+  reorderHabits: async (newHabits) => {
+    const { habits: oldHabits } = get();
+    set({ habits: newHabits });
+    
+    try {
+      await googleSheetsService.reorderHabits(newHabits);
+    } catch (error) {
+      set({ habits: oldHabits, error: 'Gagal mengurutkan habit' });
+      toast.error('Gagal menyimpan urutan habit');
+    }
+  },
+
+  calculateGamification: () => {
+    const { habits, currentStreak: prevCurrentStreak, bestStreak: prevBestStreak } = get();
     if (habits.length === 0) {
-      set({ currentStreak: 0, bestStreak: 0 });
+      set({ currentStreak: 0, bestStreak: 0, totalPoints: 0, badges: [] });
       return;
     }
 
-    // Mengumpulkan semua tanggal yang memiliki record
+    const today = formatDate(new Date());
+    let points = 0;
     const allDates = new Set<string>();
+
     habits.forEach(habit => {
-      Object.keys(habit.records).forEach(date => allDates.add(date));
+      let startDateStr = habit.createdAt ? habit.createdAt.split('T')[0] : null;
+      
+      const recordDates = Object.keys(habit.records).sort();
+      if (recordDates.length > 0) {
+        if (!startDateStr || recordDates[0] < startDateStr) {
+          startDateStr = recordDates[0];
+        }
+      }
+
+      if (!startDateStr) return;
+
+      let endDateStr = today;
+      if (recordDates.length > 0 && recordDates[recordDates.length - 1] > endDateStr) {
+        endDateStr = recordDates[recordDates.length - 1];
+      }
+
+      let currentStr = startDateStr;
+      while (currentStr <= endDateStr) {
+        allDates.add(currentStr);
+        const record = habit.records[currentStr];
+        
+        // Calculate points
+        if (habit.type === 'boolean') {
+          if (record === 'selesai') {
+            points += 10;
+          } else if (record === 'gagal') {
+            points -= 10;
+          } else if (!record && currentStr < today) {
+            // Missed past day
+            points -= 10;
+          }
+        } else if (habit.type === 'quantitative') {
+          if (record !== undefined && Number(record) >= habit.target) {
+            points += 10;
+          } else if (record !== undefined && Number(record) < habit.target) {
+            points -= 10;
+          } else if (record === undefined && currentStr < today) {
+            // Missed past day
+            points -= 10;
+          }
+        }
+        
+        // Next day
+        const d = new Date(currentStr);
+        d.setUTCDate(d.getUTCDate() + 1);
+        currentStr = d.toISOString().split('T')[0];
+      }
     });
 
-    const sortedDates = Array.from(allDates).sort();
+    points = Math.max(0, points);
+
+    const sortedDates = Array.from(allDates).filter(date => date <= today).sort();
     
     let current = 0;
     let best = 0;
@@ -170,7 +244,6 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
     // Logika sederhana: streak dihitung berdasarkan hari di mana minimal 1 habit selesai
     // Untuk aplikasi nyata, logikanya bisa disesuaikan (misal: semua habit harus selesai)
-    const today = formatDate(new Date());
     
     for (let i = 0; i < sortedDates.length; i++) {
       const date = sortedDates[i];
@@ -216,6 +289,25 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       }
     }
 
-    set({ currentStreak: current, bestStreak: best });
+    // Calculate badges
+    const newBadges: string[] = [];
+    if (points >= 50) newBadges.push('Pemula');
+    if (points >= 200) newBadges.push('Konsisten');
+    if (points >= 500) newBadges.push('Master Habit');
+    if (points >= 1000) newBadges.push('Legenda');
+    if (current >= 3) newBadges.push('On Fire');
+    if (best >= 10) newBadges.push('Unstoppable');
+
+    const streakExtended = current > prevCurrentStreak && current > 0;
+    const newBestStreak = best > prevBestStreak && best > 0;
+
+    set({ 
+      currentStreak: current, 
+      bestStreak: best, 
+      totalPoints: points, 
+      badges: newBadges,
+      streakExtended,
+      newBestStreak
+    });
   }
 }));
