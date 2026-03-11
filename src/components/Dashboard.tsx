@@ -3,10 +3,14 @@ import { useAuthStore, useHabitStore } from '../store/useHabitStore';
 import { getWeekDates, formatDate } from '../utils/dateUtils';
 import HabitRow from './HabitRow';
 import AddHabitModal from './AddHabitModal';
-import { LogOut, Plus, Flame, Trophy, Calendar } from 'lucide-react';
+import { LogOut, Plus, Flame, Trophy, Calendar, ListTodo } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const Dashboard: React.FC = () => {
+interface DashboardProps {
+  onNavigate: (page: 'dashboard' | 'todos') => void;
+}
+
+const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   const logout = useAuthStore(state => state.logout);
   const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak } = useHabitStore();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
@@ -67,13 +71,23 @@ const Dashboard: React.FC = () => {
             </div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Weekly Habit Tracker</h1>
           </div>
-          <button
-            onClick={() => setIsLogoutModalOpen(true)}
-            className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium shrink-0 ml-2"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">Keluar</span>
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => onNavigate('todos')}
+              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors text-sm font-medium"
+            >
+              <ListTodo className="w-4 h-4" />
+              <span className="hidden sm:inline">Todo List</span>
+            </button>
+            <div className="w-px h-6 bg-gray-200"></div>
+            <button
+              onClick={() => setIsLogoutModalOpen(true)}
+              className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium shrink-0"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Keluar</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -133,30 +147,37 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* Analytics Chart */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-800 mb-6">Tren Keberhasilan Harian</h2>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0fdf4" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} domain={[0, 100]} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                  formatter={(value) => [`${value}%`, 'Keberhasilan']}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="persentase" 
-                  stroke="#16a34a" 
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: '#16a34a', strokeWidth: 2, stroke: '#fff' }}
-                  activeDot={{ r: 6, fill: '#16a34a', strokeWidth: 0 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        {/* Bottom Section: Analytics */}
+        <div className="mb-8">
+          {/* Analytics Chart */}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
+            <h2 className="text-xl font-bold text-gray-800 mb-6">Tren Keberhasilan Harian</h2>
+            <div className="h-[350px] w-full flex items-center justify-center">
+              {isLoading || habits.length === 0 ? (
+                <p className="text-gray-500 text-center">Grafik Tren Habit akan ditampilkan di sini</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0fdf4" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#6b7280', fontSize: 12 }} dx={-10} domain={[0, 100]} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      formatter={(value) => [`${value}%`, 'Keberhasilan']}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="persentase" 
+                      stroke="#16a34a" 
+                      strokeWidth={3}
+                      dot={{ r: 4, fill: '#16a34a', strokeWidth: 2, stroke: '#fff' }}
+                      activeDot={{ r: 6, fill: '#16a34a', strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+        </div>
         </div>
       </main>
 

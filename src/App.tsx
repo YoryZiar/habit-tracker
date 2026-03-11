@@ -3,19 +3,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuthStore } from './store/useHabitStore';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
+import TodoPage from './components/TodoPage';
 import { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const [currentPage, setCurrentPage] = useState<'dashboard' | 'todos'>('dashboard');
 
   return (
     <>
       <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
-      {isAuthenticated ? <Dashboard /> : <Login />}
+      {!isAuthenticated ? (
+        <Login />
+      ) : currentPage === 'dashboard' ? (
+        <Dashboard onNavigate={setCurrentPage} />
+      ) : (
+        <TodoPage onNavigate={setCurrentPage} />
+      )}
     </>
   );
 }
