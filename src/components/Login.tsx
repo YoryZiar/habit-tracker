@@ -4,7 +4,7 @@ import { Leaf, Loader2 } from 'lucide-react';
 
 declare const google: any;
 
-const CLIENT_ID = '157993863564-ef8r1kkb9r0vqd9q4rmk9ejjnald6618.apps.googleusercontent.com';
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 
 const Login: React.FC = () => {

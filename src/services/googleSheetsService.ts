@@ -8,8 +8,8 @@ export interface HabitRecord {
   createdAt: string;
 }
 
-const SPREADSHEET_ID = '1FiHsIksMFSEZBmsDSxGhh6vvutPR9dQ81bg9N9dXeEA';
-const API_KEY = 'AIzaSyCKXMf7a6obqTLGoj08062bIdmvxMiyJGg';
+const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID;
+const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
 const SHEET_NAME = 'Sheet1'; // Default sheet name
 
 export const googleSheetsService = {
