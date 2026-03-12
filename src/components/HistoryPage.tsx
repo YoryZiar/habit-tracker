@@ -45,7 +45,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
           status = 'Gagal';
           value = 0;
         } else if (record === 'izin') {
-          points = 0;
+          points = -5;
           status = 'Izin';
           value = 50;
         } else if (d < new Date(new Date().setHours(0,0,0,0))) {
@@ -62,7 +62,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
             status = `Tercapai (${numRecord})`;
             isSuccess = true;
           } else {
-            points = -10;
+            points = -5;
             status = `Kurang (${numRecord})`;
           }
         } else if (d < new Date(new Date().setHours(0,0,0,0))) {
