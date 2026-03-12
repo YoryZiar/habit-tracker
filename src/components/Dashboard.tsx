@@ -65,6 +65,36 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
     }
   };
 
+  const calculateWeeklyProgress = () => {
+    if (habits.length === 0 || weekDates.length === 0) return 0;
+    
+    let totalProgress = 0;
+    habits.forEach(habit => {
+      let completed = 0;
+      if (habit.type === 'boolean') {
+        weekDates.forEach(date => {
+          const dateStr = formatDate(date);
+          if (habit.records[dateStr] === 'selesai') {
+            completed += 1;
+          }
+        });
+        totalProgress += Math.min(100, Math.round((completed / habit.target) * 100));
+      } else {
+        let totalValue = 0;
+        weekDates.forEach(date => {
+          const dateStr = formatDate(date);
+          const val = Number(habit.records[dateStr]) || 0;
+          totalValue += val;
+        });
+        totalProgress += Math.min(100, Math.round((totalValue / habit.target) * 100));
+      }
+    });
+    
+    return Math.round(totalProgress / habits.length);
+  };
+
+  const weeklyProgress = calculateWeeklyProgress();
+
   useEffect(() => {
     fetchHabits();
     const dates = getWeekDates();
@@ -363,6 +393,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             {habits.length === 0 && (
               <div className="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
                 <p className="text-gray-500">Belum ada habit. Tambahkan habit pertama Anda!</p>
+              </div>
+            )}
+
+            {habits.length > 0 && (
+              <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 flex items-center justify-between mt-4">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-800">Progres Keseluruhan Minggu Ini</h3>
+                  <p className="text-xs text-gray-500">Rata-rata pencapaian dari semua habit</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 bg-gray-200 rounded-full h-2.5">
+                    <div 
+                      className="bg-green-500 h-2.5 rounded-full transition-all duration-500" 
+                      style={{ width: `${weeklyProgress}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-sm font-bold text-gray-700 w-10 text-right">{weeklyProgress}%</span>
+                </div>
               </div>
             )}
           </div>

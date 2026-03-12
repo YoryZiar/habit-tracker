@@ -3,6 +3,15 @@ import { googleSheetsService, HabitRecord } from '../services/googleSheetsServic
 import { formatDate } from '../utils/dateUtils';
 import toast from 'react-hot-toast';
 
+const handleAuthError = (error: any) => {
+  if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+    useAuthStore.getState().logout();
+    toast.error('Sesi Anda telah berakhir. Silakan masuk kembali.');
+    return true;
+  }
+  return false;
+};
+
 interface AuthState {
   isAuthenticated: boolean;
   login: (token: string) => Promise<void>;
@@ -72,6 +81,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       set({ habits: data, isLoading: false });
       get().calculateGamification();
     } catch (error) {
+      if (handleAuthError(error)) return;
       set({ error: 'Gagal mengambil data dari Google Sheets', isLoading: false });
       toast.error('Gagal mengambil data dari Google Sheets');
     }
@@ -95,6 +105,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await googleSheetsService.updateHabit(updatedHabit);
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on error
       set({ habits, error: 'Gagal menyimpan perubahan' });
       get().calculateGamification();
@@ -118,6 +129,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       await googleSheetsService.updateHabit(updatedHabit);
       toast.success('Habit berhasil diperbarui');
     } catch (error) {
+      if (handleAuthError(error)) return;
       set({ habits, error: 'Gagal mengedit habit' });
       get().calculateGamification();
       toast.error('Gagal mengedit habit');
@@ -140,6 +152,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       await googleSheetsService.addHabit(newHabit);
       toast.success('Habit baru berhasil ditambahkan');
     } catch (error) {
+      if (handleAuthError(error)) return;
       set({ habits, error: 'Gagal menambah habit' });
       toast.error('Gagal menambah habit');
     }
@@ -155,6 +168,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       await googleSheetsService.deleteHabit(id);
       toast.success('Habit berhasil dihapus');
     } catch (error) {
+      if (handleAuthError(error)) return;
       set({ habits, error: 'Gagal menghapus habit' });
       get().calculateGamification();
       toast.error('Gagal menghapus habit');
@@ -168,6 +182,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     try {
       await googleSheetsService.reorderHabits(newHabits);
     } catch (error) {
+      if (handleAuthError(error)) return;
       set({ habits: oldHabits, error: 'Gagal mengurutkan habit' });
       toast.error('Gagal menyimpan urutan habit');
     }

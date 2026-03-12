@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { googleSheetsService, TodoRecord } from '../services/googleSheetsService';
+import { useAuthStore } from './useHabitStore';
 import toast from 'react-hot-toast';
+
+const handleAuthError = (error: any) => {
+  if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+    useAuthStore.getState().logout();
+    toast.error('Sesi Anda telah berakhir. Silakan masuk kembali.');
+    return true;
+  }
+  return false;
+};
 
 interface TodoState {
   todos: TodoRecord[];
@@ -25,6 +35,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       const todos = await googleSheetsService.getTodos();
       set({ todos, isLoading: false });
     } catch (error: any) {
+      if (handleAuthError(error)) return;
       if (retryCount < 2) {
         // Auto-retry up to 2 times with a short delay
         setTimeout(() => {
@@ -52,6 +63,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await googleSheetsService.addTodo(newTodo);
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on failure
       set((state) => ({ todos: state.todos.filter(t => t.id !== newTodo.id) }));
       toast.error('Gagal menyimpan tugas ke server');
@@ -72,6 +84,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await googleSheetsService.updateTodo(updatedTodo);
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on failure
       set((state) => ({
         todos: state.todos.map(todo => todo.id === id ? todoToToggle : todo)
@@ -90,6 +103,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await googleSheetsService.deleteTodo(id);
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on failure
       set((state) => ({ todos: [...state.todos, todoToDelete] }));
       toast.error('Gagal menghapus tugas');
@@ -110,6 +124,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await googleSheetsService.updateTodo(updatedTodo);
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on failure
       set((state) => ({
         todos: state.todos.map(todo => todo.id === id ? todoToEdit : todo)
@@ -132,6 +147,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       }
       toast.success('Berhasil menghapus semua tugas yang selesai');
     } catch (error) {
+      if (handleAuthError(error)) return;
       // Revert on failure
       set((state) => ({ todos: [...state.todos, ...completedTodos] }));
       toast.error('Gagal menghapus beberapa tugas');

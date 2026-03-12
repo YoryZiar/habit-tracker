@@ -23,6 +23,13 @@ const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
 const SHEET_NAME = 'Sheet1'; // Default sheet name
 const TODO_SHEET_NAME = 'Todos';
 
+const checkAuthError = (res: Response) => {
+  if (res.status === 401) {
+    throw new Error('UNAUTHORIZED');
+  }
+  return res;
+};
+
 export const googleSheetsService = {
   // Autentikasi API
   authenticate: async (token: string): Promise<boolean> => {
@@ -81,12 +88,15 @@ export const googleSheetsService = {
     });
     
     if (!res.ok) {
+      if (res.status === 401) throw new Error('UNAUTHORIZED');
       try {
         await googleSheetsService.authenticate(token);
         res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        checkAuthError(res);
       } catch (e) {
+        if (e instanceof Error && e.message === 'UNAUTHORIZED') throw e;
         console.error("Error during authentication retry:", e);
       }
     }
@@ -144,7 +154,7 @@ export const googleSheetsService = {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ values: [row] })
-    });
+    }).then(checkAuthError);
     
     return resPut.ok;
   },
@@ -171,7 +181,7 @@ export const googleSheetsService = {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ values: [row] })
-    });
+    }).then(checkAuthError);
     
     return res.ok;
   },
@@ -201,7 +211,7 @@ export const googleSheetsService = {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ values: rows })
-    });
+    }).then(checkAuthError);
 
     return resPut.ok;
   },
@@ -239,7 +249,7 @@ export const googleSheetsService = {
           }
         ]
       })
-    });
+    }).then(checkAuthError);
     
     return resDelete.ok;
   },
@@ -255,13 +265,16 @@ export const googleSheetsService = {
     
     // Jika gagal (kemungkinan karena sheet Todos belum ada), coba autentikasi ulang untuk membuat sheet
     if (!res.ok) {
+      if (res.status === 401) throw new Error('UNAUTHORIZED');
       try {
         await googleSheetsService.authenticate(token);
         // Coba fetch lagi
         res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        checkAuthError(res);
       } catch (e) {
+        if (e instanceof Error && e.message === 'UNAUTHORIZED') throw e;
         console.error("Error during authentication retry:", e);
       }
     }
@@ -288,7 +301,7 @@ export const googleSheetsService = {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })
-    });
+    }).then(checkAuthError);
     
     return res.ok;
   },
@@ -312,7 +325,7 @@ export const googleSheetsService = {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })
-    });
+    }).then(checkAuthError);
     
     return resPut.ok;
   },
@@ -355,7 +368,7 @@ export const googleSheetsService = {
           }
         ]
       })
-    });
+    }).then(checkAuthError);
     
     return resDelete.ok;
   }
