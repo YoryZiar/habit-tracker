@@ -1,5 +1,5 @@
 {
-  "name": "Weekly Habit Tracker",
-  "description": "A weekly habit tracker with gamification, streaks, and Google Sheets integration.",
+  "name": "Habit Tracker",
+  "description": "A habit tracker with gamification, streaks, and Google Sheets integration.",
   "requestFramePermissions": []
 }
