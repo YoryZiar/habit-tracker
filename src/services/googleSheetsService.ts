@@ -16,6 +16,7 @@ export interface TodoRecord {
   completed: boolean;
   createdAt: string;
   dueDate?: string;
+  description?: string;
 }
 
 const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID;
@@ -68,10 +69,10 @@ export const googleSheetsService = {
         body: JSON.stringify({ requests: [{ addSheet: { properties: { title: TODO_SHEET_NAME } } }] })
       });
       
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A1:E1?valueInputOption=RAW&key=${API_KEY}`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A1:F1?valueInputOption=RAW&key=${API_KEY}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [['id', 'text', 'completed', 'createdAt', 'dueDate']] })
+        body: JSON.stringify({ values: [['id', 'text', 'completed', 'createdAt', 'dueDate', 'description']] })
       });
     }
     
@@ -259,7 +260,7 @@ export const googleSheetsService = {
     const token = localStorage.getItem('gapi_access_token');
     if (!token) throw new Error('Token tidak ditemukan');
 
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E?key=${API_KEY}`, {
+    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:F?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -269,7 +270,7 @@ export const googleSheetsService = {
       try {
         await googleSheetsService.authenticate(token);
         // Coba fetch lagi
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E?key=${API_KEY}`, {
+        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:F?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         checkAuthError(res);
@@ -289,15 +290,16 @@ export const googleSheetsService = {
       text: row[1],
       completed: row[2] === 'TRUE',
       createdAt: row[3],
-      dueDate: row[4] || undefined
+      dueDate: row[4] || undefined,
+      description: row[5] || undefined
     }));
   },
 
   addTodo: async (todo: TodoRecord): Promise<boolean> => {
     const token = localStorage.getItem('gapi_access_token');
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || ''];
+    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || '', todo.description || ''];
     
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:E:append?valueInputOption=RAW&key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A:F:append?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })
@@ -319,9 +321,9 @@ export const googleSheetsService = {
     if (rowIndex === -1) return false;
     
     const actualRowNumber = rowIndex + 1;
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || ''];
+    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || '', todo.description || ''];
     
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A${actualRowNumber}:E${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A${actualRowNumber}:F${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ values: [row] })
@@ -371,5 +373,31 @@ export const googleSheetsService = {
     }).then(checkAuthError);
     
     return resDelete.ok;
+  },
+
+  reorderTodos: async (todos: TodoRecord[]): Promise<boolean> => {
+    const token = localStorage.getItem('gapi_access_token');
+    if (!token) return false;
+
+    const rows = todos.map(todo => [
+      todo.id,
+      todo.text,
+      todo.completed ? 'TRUE' : 'FALSE',
+      todo.createdAt,
+      todo.dueDate || '',
+      todo.description || ''
+    ]);
+
+    // Update the entire range starting from A2
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${TODO_SHEET_NAME}!A2:F${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
+      method: 'PUT',
+      headers: { 
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ values: rows })
+    }).then(checkAuthError);
+
+    return resPut.ok;
   }
 };

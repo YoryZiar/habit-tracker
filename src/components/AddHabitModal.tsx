@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useHabitStore } from '../store/useHabitStore';
 import { X } from 'lucide-react';
 
@@ -18,7 +19,14 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
   const [specificDays, setSpecificDays] = useState<number[]>([]);
   const [error, setError] = useState('');
 
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,8 +83,8 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
 
   const daysOfWeek = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+  const modalContent = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Tambah Habit Baru</h2>
@@ -217,6 +225,8 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default AddHabitModal;

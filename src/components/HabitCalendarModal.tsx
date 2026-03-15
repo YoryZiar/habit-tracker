@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { HabitRecord } from '../services/googleSheetsService';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -10,8 +11,14 @@ interface HabitCalendarModalProps {
 
 const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose, habit }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [mounted, setMounted] = useState(false);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
 
   const getDaysInMonth = (year: number, month: number) => {
     return new Date(year, month + 1, 0).getDate();
@@ -44,13 +51,13 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
     const record = habit.records[dateStr];
     
     if (habit.type === 'boolean') {
-      if (record === 'selesai') return 'bg-green-500 text-white';
-      if (record === 'gagal') return 'bg-red-500 text-white';
-      if (record === 'izin') return 'bg-yellow-400 text-white';
+      if (record === 'selesai') return 'bg-green-500 text-white shadow-sm shadow-green-100';
+      if (record === 'gagal') return 'bg-red-500 text-white shadow-sm shadow-red-100';
+      if (record === 'izin') return 'bg-yellow-400 text-white shadow-sm shadow-yellow-100';
     } else if (habit.type === 'quantitative') {
       if (record !== undefined) {
-        if (Number(record) >= habit.target) return 'bg-green-500 text-white';
-        return 'bg-red-500 text-white';
+        if (Number(record) >= habit.target) return 'bg-green-500 text-white shadow-sm shadow-green-100';
+        return 'bg-red-500 text-white shadow-sm shadow-red-100';
       }
     }
     
@@ -60,10 +67,10 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
     const checkDate = new Date(dateStr);
     
     if (checkDate > today) {
-      return 'bg-gray-50 text-gray-300';
+      return 'bg-transparent text-gray-300';
     }
     
-    return 'bg-gray-100 text-gray-600';
+    return 'bg-gray-50 text-gray-600 border border-gray-100 hover:bg-gray-100';
   };
 
   const renderCalendarDays = () => {
@@ -71,7 +78,7 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
     
     // Empty cells for days before the first day of the month
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} className="h-10 w-10 sm:h-12 sm:w-12"></div>);
+      days.push(<div key={`empty-${i}`} className="w-10 h-10 sm:w-11 sm:h-11"></div>);
     }
     
     // Days of the month
@@ -80,10 +87,12 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
       const statusColor = getDayStatusColor(dateStr);
       const record = habit.records[dateStr];
       
+      const isToday = new Date().toDateString() === new Date(year, month, i).toDateString();
+      
       days.push(
         <div 
           key={i} 
-          className={`h-10 w-10 sm:h-12 sm:w-12 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${statusColor}`}
+          className={`w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-xl text-sm font-medium transition-colors cursor-default ${statusColor} ${isToday ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
           title={record ? `Nilai: ${record}` : 'Tidak ada data'}
         >
           {i}
@@ -94,11 +103,11 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
     return days;
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
+  const modalContent = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col">
-        <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
-          <h2 className="text-xl font-bold text-gray-800">Kalender Habit</h2>
+        <div className="flex justify-between items-center p-5 border-b border-gray-100 shrink-0">
+          <h2 className="text-lg font-bold text-gray-800">Kalender Habit</h2>
           <button 
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition-colors bg-gray-50 hover:bg-gray-100 p-2 rounded-full"
@@ -107,61 +116,61 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-5 sm:p-6">
           <div className="text-center mb-6">
-            <h3 className="font-semibold text-lg text-gray-800">{habit.name}</h3>
-            <p className="text-sm text-gray-500">
-              Target: {habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}
+            <h3 className="font-bold text-xl text-gray-900">{habit.name}</h3>
+            <p className="text-sm text-gray-500 mt-1">
+              Target: <span className="font-medium text-gray-700">{habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}</span>
             </p>
           </div>
 
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-6 bg-gray-50 p-1.5 rounded-2xl border border-gray-100">
             <button 
               onClick={handlePrevMonth}
-              className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+              className="p-2 rounded-xl hover:bg-white hover:shadow-sm text-gray-600 transition-all"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
-            <h4 className="font-bold text-gray-800">
+            <h4 className="font-bold text-gray-800 text-base">
               {monthNames[month]} {year}
             </h4>
             <button 
               onClick={handleNextMonth}
-              className="p-2 rounded-full hover:bg-gray-100 text-gray-600 transition-colors"
+              className="p-2 rounded-xl hover:bg-white hover:shadow-sm text-gray-600 transition-all"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 mb-2 text-center">
+          <div className="grid grid-cols-7 gap-1 mb-2 text-center">
             {['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'].map(day => (
-              <div key={day} className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+              <div key={day} className="text-[11px] font-bold text-gray-400 uppercase tracking-wider py-1">
                 {day}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-2 justify-items-center">
+          <div className="grid grid-cols-7 gap-1 justify-items-center">
             {renderCalendarDays()}
           </div>
           
-          <div className="mt-8 flex flex-wrap justify-center gap-4 text-xs text-gray-500">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-green-500"></div>
-              <span>Selesai / Tercapai</span>
+          <div className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-3 text-xs text-gray-600 font-medium bg-gray-50 p-4 rounded-2xl border border-gray-100">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-green-500 shadow-sm"></div>
+              <span>Tercapai</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-red-500"></div>
-              <span>Gagal / Kurang</span>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-red-500 shadow-sm"></div>
+              <span>Gagal</span>
             </div>
             {habit.type === 'boolean' && (
-              <div className="flex items-center gap-1.5">
-                <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-400 shadow-sm"></div>
                 <span>Izin</span>
               </div>
             )}
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-gray-100"></div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-white border border-gray-200"></div>
               <span>Kosong</span>
             </div>
           </div>
@@ -169,6 +178,8 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default HabitCalendarModal;

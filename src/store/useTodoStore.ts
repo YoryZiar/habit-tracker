@@ -17,11 +17,12 @@ interface TodoState {
   isLoading: boolean;
   error: string | null;
   fetchTodos: (retryCount?: number) => Promise<void>;
-  addTodo: (text: string, dueDate?: string) => Promise<void>;
+  addTodo: (text: string, dueDate?: string, description?: string) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
-  editTodo: (id: string, newText: string, newDueDate?: string) => Promise<void>;
+  editTodo: (id: string, newText: string, newDueDate?: string, newDescription?: string) => Promise<void>;
   clearCompleted: () => Promise<void>;
+  reorderTodos: (newTodos: TodoRecord[]) => Promise<void>;
 }
 
 export const useTodoStore = create<TodoState>((set, get) => ({
@@ -48,13 +49,14 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  addTodo: async (text: string, dueDate?: string) => {
+  addTodo: async (text: string, dueDate?: string, description?: string) => {
     const newTodo: TodoRecord = {
       id: Date.now().toString(),
       text,
       completed: false,
       createdAt: new Date().toISOString(),
-      dueDate
+      dueDate,
+      description
     };
     
     // Optimistic update
@@ -110,11 +112,11 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  editTodo: async (id: string, newText: string, newDueDate?: string) => {
+  editTodo: async (id: string, newText: string, newDueDate?: string, newDescription?: string) => {
     const todoToEdit = get().todos.find(t => t.id === id);
     if (!todoToEdit) return;
 
-    const updatedTodo = { ...todoToEdit, text: newText, dueDate: newDueDate };
+    const updatedTodo = { ...todoToEdit, text: newText, dueDate: newDueDate, description: newDescription };
     
     // Optimistic update
     set((state) => ({
@@ -151,6 +153,19 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       // Revert on failure
       set((state) => ({ todos: [...state.todos, ...completedTodos] }));
       toast.error('Gagal menghapus beberapa tugas');
+    }
+  },
+
+  reorderTodos: async (newTodos) => {
+    const { todos: oldTodos } = get();
+    set({ todos: newTodos });
+    
+    try {
+      await googleSheetsService.reorderTodos(newTodos);
+    } catch (error) {
+      if (handleAuthError(error)) return;
+      set({ todos: oldTodos, error: 'Gagal mengurutkan tugas' });
+      toast.error('Gagal menyimpan urutan tugas');
     }
   }
 }));

@@ -9,6 +9,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import TodoPage from './components/TodoPage';
 import HistoryPage from './components/HistoryPage';
+import FloatingNav from './components/FloatingNav';
 import { Toaster } from 'react-hot-toast';
 
 export default function App() {
@@ -20,12 +21,17 @@ export default function App() {
       <Toaster position="top-center" toastOptions={{ duration: 3000 }} />
       {!isAuthenticated ? (
         <Login />
-      ) : currentPage === 'dashboard' ? (
-        <Dashboard onNavigate={setCurrentPage} />
-      ) : currentPage === 'todos' ? (
-        <TodoPage onNavigate={setCurrentPage} />
       ) : (
-        <HistoryPage onNavigate={setCurrentPage} />
+        <div className="pb-24"> {/* Add padding bottom to prevent content from being hidden behind the floating nav */}
+          {currentPage === 'dashboard' ? (
+            <Dashboard onNavigate={setCurrentPage} />
+          ) : currentPage === 'todos' ? (
+            <TodoPage onNavigate={setCurrentPage} />
+          ) : (
+            <HistoryPage onNavigate={setCurrentPage} />
+          )}
+          <FloatingNav currentPage={currentPage} onNavigate={setCurrentPage} />
+        </div>
       )}
     </>
   );

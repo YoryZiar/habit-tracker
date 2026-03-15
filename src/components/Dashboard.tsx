@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { useAuthStore, useHabitStore } from '../store/useHabitStore';
+import { useHabitStore } from '../store/useHabitStore';
 import { getWeekDates, formatDate } from '../utils/dateUtils';
 import HabitRow from './HabitRow';
 import AddHabitModal from './AddHabitModal';
 import EditHabitModal from './EditHabitModal';
 import HabitCalendarModal from './HabitCalendarModal';
-import { LogOut, Plus, Flame, Trophy, Calendar, ListTodo, Star, Medal, TrendingUp, Menu, X } from 'lucide-react';
+import { Plus, Flame, Trophy, Calendar, ListTodo, Star, Medal, TrendingUp } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -30,13 +30,10 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const logout = useAuthStore(state => state.logout);
   const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, badges, reorderHabits } = useHabitStore();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedChartHabitId, setSelectedChartHabitId] = useState<string>('all');
   const [editingHabit, setEditingHabit] = useState<any>(null);
   const [calendarHabit, setCalendarHabit] = useState<any>(null);
@@ -172,82 +169,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Weekly Habit Tracker</h1>
           </div>
-          
-          {/* Desktop Navigation */}
-          <div className="hidden sm:flex items-center gap-4">
-            <button
-              onClick={() => onNavigate('history')}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors text-sm font-medium"
-            >
-              <TrendingUp className="w-4 h-4" />
-              <span>Riwayat</span>
-            </button>
-            <div className="w-px h-6 bg-gray-200"></div>
-            <button
-              onClick={() => onNavigate('todos')}
-              className="flex items-center gap-2 text-gray-600 hover:text-blue-600 transition-colors text-sm font-medium"
-            >
-              <ListTodo className="w-4 h-4" />
-              <span>Todo List</span>
-            </button>
-            <div className="w-px h-6 bg-gray-200"></div>
-            <button
-              onClick={() => setIsLogoutModalOpen(true)}
-              className="flex items-center gap-2 text-gray-500 hover:text-red-600 transition-colors text-sm font-medium shrink-0"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Keluar</span>
-            </button>
-          </div>
-
-          {/* Mobile Menu Button */}
-          <div className="sm:hidden flex items-center">
-            <button
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
         </div>
-
-        {/* Mobile Navigation Dropdown */}
-        {isMobileMenuOpen && (
-          <div className="sm:hidden border-t border-gray-100 bg-white absolute w-full shadow-lg">
-            <div className="px-4 pt-2 pb-4 space-y-1">
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  onNavigate('history');
-                }}
-                className="flex items-center gap-3 w-full px-3 py-3 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
-              >
-                <TrendingUp className="w-5 h-5" />
-                Riwayat
-              </button>
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  onNavigate('todos');
-                }}
-                className="flex items-center gap-3 w-full px-3 py-3 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors font-medium"
-              >
-                <ListTodo className="w-5 h-5" />
-                Todo List
-              </button>
-              <button
-                onClick={() => {
-                  setIsMobileMenuOpen(false);
-                  setIsLogoutModalOpen(true);
-                }}
-                className="flex items-center gap-3 w-full px-3 py-3 text-red-500 hover:bg-red-50 rounded-lg transition-colors font-medium"
-              >
-                <LogOut className="w-5 h-5" />
-                Keluar
-              </button>
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -506,35 +428,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm"
               >
                 Hapus
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Logout Confirmation Modal */}
-      {isLogoutModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Konfirmasi Keluar</h3>
-            <p className="text-gray-500 text-sm mb-6">
-              Apakah Anda yakin ingin keluar dari aplikasi? Anda harus login kembali untuk mengakses data habit Anda.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setIsLogoutModalOpen(false)}
-                className="flex-1 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 font-medium py-2 rounded-lg transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                onClick={() => {
-                  setIsLogoutModalOpen(false);
-                  logout();
-                }}
-                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm"
-              >
-                Keluar
               </button>
             </div>
           </div>

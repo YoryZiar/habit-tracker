@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useHabitStore } from '../store/useHabitStore';
 import { formatDate } from '../utils/dateUtils';
-import { ChevronLeft, Calendar, TrendingUp, Award, List } from 'lucide-react';
+import { Calendar, TrendingUp, Award, List } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 interface HistoryPageProps {
@@ -120,12 +120,6 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
       <header className="bg-white shadow-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => onNavigate('dashboard')}
-              className="p-2 -ml-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
-            >
-              <ChevronLeft className="w-6 h-6" />
-            </button>
             <div className="flex items-center gap-2">
               <div className="bg-blue-100 p-2 rounded-lg">
                 <TrendingUp className="w-5 h-5 text-blue-600" />

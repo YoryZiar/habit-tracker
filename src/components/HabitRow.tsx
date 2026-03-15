@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { HabitRecord } from '../services/googleSheetsService';
 import { formatDate } from '../utils/dateUtils';
 import { useHabitStore } from '../store/useHabitStore';
-import { Check, X, Minus, Pencil, Trash2, CalendarDays, GripVertical } from 'lucide-react';
+import { Check, X, Minus, Pencil, Trash2, CalendarDays, GripVertical, Flame } from 'lucide-react';
 import EditHabitModal from './EditHabitModal';
 import HabitCalendarModal from './HabitCalendarModal';
 import { useSortable } from '@dnd-kit/sortable';
@@ -65,7 +66,65 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     }
   };
 
+  const calculateHabitStreak = () => {
+    let streak = 0;
+    const today = new Date();
+    const todayStr = formatDate(today);
+    
+    const recordDates = Object.keys(habit.records).sort().reverse();
+    if (recordDates.length === 0) return 0;
+    
+    let currentStr = todayStr;
+    
+    // Check if today is completed
+    const isTodayCompleted = habit.type === 'boolean' 
+      ? habit.records[todayStr] === 'selesai'
+      : Number(habit.records[todayStr]) >= habit.target;
+      
+    if (!isTodayCompleted) {
+      // If today is not completed, start checking from yesterday
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      currentStr = formatDate(yesterday);
+    }
+    
+    // Safety limit to prevent infinite loops
+    let iterations = 0;
+    const maxIterations = 365 * 2; // Check up to 2 years
+    
+    while (iterations < maxIterations) {
+      iterations++;
+      const currentDateObj = new Date(currentStr);
+      const dayOfWeek = currentDateObj.getDay();
+      
+      // If specific days are set, skip days that are not in the schedule
+      if (habit.recurrence === 'specific_days' && habit.specificDays && habit.specificDays.length > 0) {
+        if (!habit.specificDays.includes(dayOfWeek)) {
+          // Move to previous day
+          currentDateObj.setDate(currentDateObj.getDate() - 1);
+          currentStr = formatDate(currentDateObj);
+          continue;
+        }
+      }
+      
+      const isCompleted = habit.type === 'boolean'
+        ? habit.records[currentStr] === 'selesai'
+        : Number(habit.records[currentStr]) >= habit.target;
+        
+      if (isCompleted) {
+        streak++;
+        currentDateObj.setDate(currentDateObj.getDate() - 1);
+        currentStr = formatDate(currentDateObj);
+      } else {
+        break;
+      }
+    }
+    
+    return streak;
+  };
+
   const progress = calculateProgress();
+  const streak = calculateHabitStreak();
 
   const handleBooleanChange = (dateStr: string, value: string) => {
     updateRecord(habit.id, dateStr, value);
@@ -133,22 +192,30 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
-            <p className="text-sm text-gray-500">
-              Target: {habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}
+            <p className="text-sm text-gray-500 flex items-center gap-3 mt-1">
+              <span>Target: {habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}</span>
+              {streak > 0 && (
+                <span className="flex items-center gap-1 text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full text-xs font-bold">
+                  <Flame className="w-3 h-3" />
+                  {streak} Hari
+                </span>
+              )}
             </p>
           </div>
         </div>
         
         {/* Progress Bar */}
         <div className="w-full md:w-64">
-          <div className="flex justify-between text-xs mb-1">
+          <div className="flex justify-between text-xs mb-1.5">
             <span className="font-medium text-gray-600">Progress</span>
-            <span className="font-bold text-green-600">{progress}%</span>
+            <span className={`font-bold ${progress === 100 ? 'text-green-600' : 'text-gray-700'}`}>{progress}%</span>
           </div>
-          <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
             <motion.div 
               className={`h-full rounded-full ${
-                progress === 100 ? 'bg-green-500' : 'bg-green-400'
+                progress === 100 
+                  ? 'bg-gradient-to-r from-green-400 to-green-500' 
+                  : 'bg-gradient-to-r from-green-300 to-green-400'
               }`}
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
@@ -245,8 +312,8 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
       )}
 
       {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
+      {isDeleteModalOpen && createPortal(
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Hapus Habit</h3>
             <p className="text-gray-500 text-sm mb-6">
@@ -267,7 +334,8 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

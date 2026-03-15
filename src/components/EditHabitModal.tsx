@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useHabitStore } from '../store/useHabitStore';
 import { HabitRecord } from '../services/googleSheetsService';
 import { X } from 'lucide-react';
@@ -11,6 +12,7 @@ interface EditHabitModalProps {
 
 const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit }) => {
   const editHabit = useHabitStore(state => state.editHabit);
+  const [mounted, setMounted] = useState(false);
   
   const [name, setName] = useState(habit.name);
   const [type, setType] = useState<'boolean' | 'quantitative'>(habit.type);
@@ -19,6 +21,11 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
   const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'specific_days'>(habit.recurrence || 'daily');
   const [specificDays, setSpecificDays] = useState<number[]>(habit.specificDays || []);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -32,7 +39,7 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
     }
   }, [isOpen, habit]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,8 +88,8 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
 
   const daysOfWeek = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" style={{ position: 'fixed' }}>
+  const modalContent = (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center p-6 border-b border-gray-100 shrink-0">
           <h2 className="text-xl font-bold text-gray-800">Edit Habit</h2>
@@ -223,6 +230,8 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 };
 
 export default EditHabitModal;
