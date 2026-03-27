@@ -9,6 +9,7 @@ import HabitCalendarModal from './HabitCalendarModal';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, AnimatePresence } from 'motion/react';
+import { getIconComponent } from './IconPicker';
 
 interface HabitRowProps {
   habit: HabitRecord;
@@ -74,6 +75,56 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     const recordDates = Object.keys(habit.records).sort().reverse();
     if (recordDates.length === 0) return 0;
     
+    if (habit.recurrence === 'weekly') {
+      // Calculate weekly streak
+      // A week is considered completed if the target is met within the week (Mon-Sun)
+      // Let's check week by week going backwards
+      let currentWeekStart = new Date(today);
+      const currentDay = currentWeekStart.getUTCDay();
+      const diff = currentWeekStart.getUTCDate() - currentDay + (currentDay === 0 ? -6 : 1); // Adjust to Monday
+      currentWeekStart.setUTCDate(diff);
+      currentWeekStart.setUTCHours(0, 0, 0, 0);
+
+      let iterations = 0;
+      const maxIterations = 104; // Check up to 2 years (104 weeks)
+
+      while (iterations < maxIterations) {
+        iterations++;
+        
+        // Check if any day in this week is completed
+        let isWeekCompleted = false;
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(currentWeekStart);
+          d.setUTCDate(d.getUTCDate() + i);
+          const dateStr = d.toISOString().split('T')[0];
+          
+          const isCompleted = habit.type === 'boolean'
+            ? habit.records[dateStr] === 'selesai'
+            : Number(habit.records[dateStr]) >= habit.target;
+            
+          if (isCompleted) {
+            isWeekCompleted = true;
+            break;
+          }
+        }
+
+        if (isWeekCompleted) {
+          streak++;
+          // Move to previous week
+          currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - 7);
+        } else {
+          // If this is the current week, it's okay if it's not completed yet
+          if (iterations === 1) {
+            // Move to previous week and continue checking
+            currentWeekStart.setUTCDate(currentWeekStart.getUTCDate() - 7);
+          } else {
+            break; // Streak broken
+          }
+        }
+      }
+      return streak;
+    }
+
     let currentStr = todayStr;
     
     // Check if today is completed
@@ -84,7 +135,7 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     if (!isTodayCompleted) {
       // If today is not completed, start checking from yesterday
       const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
       currentStr = formatDate(yesterday);
     }
     
@@ -95,14 +146,14 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     while (iterations < maxIterations) {
       iterations++;
       const currentDateObj = new Date(currentStr);
-      const dayOfWeek = currentDateObj.getDay();
+      const dayOfWeek = currentDateObj.getUTCDay();
       
       // If specific days are set, skip days that are not in the schedule
       if (habit.recurrence === 'specific_days' && habit.specificDays && habit.specificDays.length > 0) {
         if (!habit.specificDays.includes(dayOfWeek)) {
           // Move to previous day
-          currentDateObj.setDate(currentDateObj.getDate() - 1);
-          currentStr = formatDate(currentDateObj);
+          currentDateObj.setUTCDate(currentDateObj.getUTCDate() - 1);
+          currentStr = currentDateObj.toISOString().split('T')[0];
           continue;
         }
       }
@@ -113,8 +164,8 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
         
       if (isCompleted) {
         streak++;
-        currentDateObj.setDate(currentDateObj.getDate() - 1);
-        currentStr = formatDate(currentDateObj);
+        currentDateObj.setUTCDate(currentDateObj.getUTCDate() - 1);
+        currentStr = currentDateObj.toISOString().split('T')[0];
       } else {
         break;
       }
@@ -151,6 +202,8 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     setIsDeleteModalOpen(false);
   };
 
+  const HabitIcon = getIconComponent(habit.icon);
+
   return (
     <div 
       ref={setNodeRef}
@@ -167,6 +220,9 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
           >
             <GripVertical className="w-5 h-5" />
           </button>
+          <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-50 text-blue-600 shrink-0">
+            <HabitIcon className="w-5 h-5" />
+          </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-gray-800 text-lg">{habit.name}</h3>

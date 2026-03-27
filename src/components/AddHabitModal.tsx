@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useHabitStore } from '../store/useHabitStore';
 import { X } from 'lucide-react';
+import { IconPicker } from './IconPicker';
 
 interface AddHabitModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
   const [unit, setUnit] = useState('');
   const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'specific_days'>('daily');
   const [specificDays, setSpecificDays] = useState<number[]>([]);
+  const [icon, setIcon] = useState('Activity');
   const [error, setError] = useState('');
 
   const [mounted, setMounted] = useState(false);
@@ -60,6 +62,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
         unit: type === 'quantitative' ? unit.trim() : undefined,
         recurrence,
         specificDays: recurrence === 'specific_days' ? specificDays : undefined,
+        icon,
       });
       
       // Reset form
@@ -69,6 +72,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
       setUnit('');
       setRecurrence('daily');
       setSpecificDays([]);
+      setIcon('Activity');
       onClose();
     } catch (err) {
       setError('Gagal menambahkan habit');
@@ -113,6 +117,8 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
             />
           </div>
+
+          <IconPicker selectedIcon={icon} onSelectIcon={setIcon} />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipe Habit</label>

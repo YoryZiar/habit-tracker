@@ -8,6 +8,7 @@ import HabitCalendarModal from './HabitCalendarModal';
 import { Plus, Flame, Trophy, Calendar, ListTodo, Star, Medal, TrendingUp } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
+import { getIconComponent } from './IconPicker';
 import {
   DndContext,
   closestCenter,
@@ -30,7 +31,7 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, badges, reorderHabits } = useHabitStore();
+  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, level, currentLevelPoints, nextLevelPoints, badges, reorderHabits } = useHabitStore();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -169,6 +170,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </div>
             <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Weekly Habit Tracker</h1>
           </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+              <Star className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-bold text-blue-700">Lvl {level || 1}</span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -250,9 +257,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             <div className="bg-blue-100 p-4 rounded-full shrink-0">
               <Star className="w-8 h-8 text-blue-500" />
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Total Points</p>
-              <p className="text-3xl font-bold text-gray-900">{totalPoints || 0} <span className="text-lg font-normal text-gray-500">Pts</span></p>
+            <div className="flex-1">
+              <div className="flex justify-between items-center mb-1">
+                <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Level {level || 1}</p>
+                <p className="text-xs font-bold text-blue-600">{(totalPoints || 0) - (currentLevelPoints || 0)} / {(nextLevelPoints || 100) - (currentLevelPoints || 0)} XP</p>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-500" 
+                  style={{ width: `${Math.min(100, (((totalPoints || 0) - (currentLevelPoints || 0)) / ((nextLevelPoints || 100) - (currentLevelPoints || 0))) * 100)}%` }}
+                ></div>
+              </div>
             </div>
           </div>
 
@@ -344,16 +359,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 w-full">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h2 className="text-xl font-bold text-gray-800">Tren Keberhasilan (1 Bulan Terakhir)</h2>
-              <select
-                value={selectedChartHabitId}
-                onChange={(e) => setSelectedChartHabitId(e.target.value)}
-                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block p-2.5 min-w-[200px]"
-              >
-                <option value="all">Semua Habit</option>
-                {habits.map(h => (
-                  <option key={h.id} value={h.id}>{h.name}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                {selectedChartHabitId !== 'all' && (
+                  <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 text-blue-600 shrink-0">
+                    {(() => {
+                      const selectedHabit = habits.find(h => h.id === selectedChartHabitId);
+                      const Icon = getIconComponent(selectedHabit?.icon);
+                      return <Icon className="w-5 h-5" />;
+                    })()}
+                  </div>
+                )}
+                <select
+                  value={selectedChartHabitId}
+                  onChange={(e) => setSelectedChartHabitId(e.target.value)}
+                  className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-green-500 focus:border-green-500 block p-2.5 min-w-[200px] w-full sm:w-auto"
+                >
+                  <option value="all">Semua Habit</option>
+                  {habits.map(h => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="h-[350px] w-full flex items-center justify-center">
               {isLoading || habits.length === 0 ? (

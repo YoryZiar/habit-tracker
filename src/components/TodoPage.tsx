@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTodoStore } from '../store/useTodoStore';
-import { Plus, Trash2, Edit2, Check, X, CheckCircle2, Circle, ListTodo, Calendar, AlertCircle, RefreshCw, AlignLeft } from 'lucide-react';
+import { useHabitStore } from '../store/useHabitStore';
+import { Plus, Trash2, Edit2, Check, X, CheckCircle2, Circle, ListTodo, Calendar, AlertCircle, RefreshCw, AlignLeft, Star } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -28,6 +29,7 @@ interface TodoPageProps {
 
 const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
   const { todos, isLoading, error, fetchTodos, addTodo, toggleTodo, deleteTodo, editTodo, clearCompleted, reorderTodos } = useTodoStore();
+  const { level } = useHabitStore();
   const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'add' | 'edit'>('add');
   
@@ -146,13 +148,19 @@ const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
               <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">Todo List</h1>
             </div>
           </div>
-          <button
-            onClick={openAddModal}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors font-medium flex items-center gap-2 shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-            <span className="hidden sm:inline">Tambah Tugas</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+              <Star className="w-4 h-4 text-blue-500" />
+              <span className="text-sm font-bold text-blue-700">Lvl {level || 1}</span>
+            </div>
+            <button
+              onClick={openAddModal}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors font-medium flex items-center gap-2 shadow-sm"
+            >
+              <Plus className="w-5 h-5" />
+              <span className="hidden sm:inline">Tambah Tugas</span>
+            </button>
+          </div>
         </div>
       </header>
 

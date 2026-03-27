@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { HabitRecord } from '../services/googleSheetsService';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { getIconComponent } from './IconPicker';
 
 interface HabitCalendarModalProps {
   isOpen: boolean;
@@ -118,7 +119,15 @@ const HabitCalendarModal: React.FC<HabitCalendarModalProps> = ({ isOpen, onClose
 
         <div className="p-5 sm:p-6">
           <div className="text-center mb-6">
-            <h3 className="font-bold text-xl text-gray-900">{habit.name}</h3>
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-blue-50 text-blue-600 shrink-0">
+                {(() => {
+                  const Icon = getIconComponent(habit.icon);
+                  return <Icon className="w-5 h-5" />;
+                })()}
+              </div>
+              <h3 className="font-bold text-xl text-gray-900">{habit.name}</h3>
+            </div>
             <p className="text-sm text-gray-500 mt-1">
               Target: <span className="font-medium text-gray-700">{habit.target} {habit.unit || (habit.type === 'boolean' ? 'hari/minggu' : '')}</span>
             </p>

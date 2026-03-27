@@ -33,6 +33,9 @@ interface HabitState {
   currentStreak: number;
   bestStreak: number;
   totalPoints: number;
+  level: number;
+  currentLevelPoints: number;
+  nextLevelPoints: number;
   badges: string[];
   streakExtended: boolean;
   newBestStreak: boolean;
@@ -67,6 +70,11 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   error: null,
   currentStreak: 0,
   bestStreak: 0,
+  totalPoints: 0,
+  level: 1,
+  currentLevelPoints: 0,
+  nextLevelPoints: 100,
+  badges: [],
   streakExtended: false,
   newBestStreak: false,
 
@@ -191,7 +199,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   calculateGamification: () => {
     const { habits, currentStreak: prevCurrentStreak, bestStreak: prevBestStreak } = get();
     if (habits.length === 0) {
-      set({ currentStreak: 0, bestStreak: 0, totalPoints: 0, badges: [] });
+      set({ currentStreak: 0, bestStreak: 0, totalPoints: 0, level: 1, currentLevelPoints: 0, nextLevelPoints: 100, badges: [] });
       return;
     }
 
@@ -221,23 +229,33 @@ export const useHabitStore = create<HabitState>((set, get) => ({
         allDates.add(currentStr);
         const record = habit.records[currentStr];
         
+        const dateObj = new Date(currentStr);
+        const dayOfWeek = dateObj.getUTCDay();
+        
+        let isScheduled = false;
+        if (!habit.recurrence || habit.recurrence === 'daily') {
+          isScheduled = true;
+        } else if (habit.recurrence === 'specific_days') {
+          isScheduled = habit.specificDays?.includes(dayOfWeek) ?? false;
+        }
+
         // Calculate points
         if (habit.type === 'boolean') {
           if (record === 'selesai') {
-            points += 10;
+            points += 20;
           } else if (record === 'gagal') {
             points -= 10;
-          } else if (!record && currentStr < today) {
-            // Missed past day
+          } else if (!record && currentStr < today && isScheduled) {
+            // Missed past scheduled day
             points -= 10;
           }
         } else if (habit.type === 'quantitative') {
           if (record !== undefined && Number(record) >= habit.target) {
-            points += 10;
+            points += 20;
           } else if (record !== undefined && Number(record) < habit.target) {
             points -= 10;
-          } else if (record === undefined && currentStr < today) {
-            // Missed past day
+          } else if (record === undefined && currentStr < today && isScheduled) {
+            // Missed past scheduled day
             points -= 10;
           }
         }
@@ -257,61 +275,80 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     let best = 0;
     let tempStreak = 0;
 
-    // Logika sederhana: streak dihitung berdasarkan hari di mana minimal 1 habit selesai
-    // Untuk aplikasi nyata, logikanya bisa disesuaikan (misal: semua habit harus selesai)
-    
     for (let i = 0; i < sortedDates.length; i++) {
-      const date = sortedDates[i];
+      const dateStr = sortedDates[i];
+      const dateObj = new Date(dateStr);
+      const dayOfWeek = dateObj.getUTCDay();
       
-      // Cek apakah ada habit yang selesai pada tanggal ini
-      const isDayCompleted = habits.some(habit => {
-        const record = habit.records[date];
-        if (habit.type === 'boolean') {
-          return record === 'selesai';
-        } else {
-          return Number(record) >= habit.target;
+      const scheduledHabits = habits.filter(habit => {
+        const habitStartDate = habit.createdAt ? habit.createdAt.split('T')[0] : '2000-01-01';
+        if (dateStr < habitStartDate) return false;
+
+        if (!habit.recurrence || habit.recurrence === 'daily') {
+          return true;
+        } else if (habit.recurrence === 'specific_days') {
+          return habit.specificDays?.includes(dayOfWeek) ?? false;
         }
+        return false;
       });
 
-      if (isDayCompleted) {
-        tempStreak++;
-        best = Math.max(best, tempStreak);
-        
-        // Cek jika ini adalah hari ini atau kemarin untuk current streak
-        const dateObj = new Date(date);
-        const todayObj = new Date(today);
-        const diffTime = Math.abs(todayObj.getTime() - dateObj.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        if (diffDays <= 1) {
-          current = tempStreak;
+      if (scheduledHabits.length > 0) {
+        let allCompleted = true;
+        let anyFailed = false;
+
+        scheduledHabits.forEach(habit => {
+          const record = habit.records[dateStr];
+          let isSuccess = false;
+          
+          if (habit.type === 'boolean') {
+            isSuccess = record === 'selesai';
+          } else {
+            isSuccess = record !== undefined && Number(record) >= habit.target;
+          }
+
+          if (!isSuccess) {
+            allCompleted = false;
+            if (record === 'gagal') {
+              anyFailed = true;
+            } else if (record !== 'izin' && dateStr < today) {
+              anyFailed = true;
+            }
+          }
+        });
+
+        if (allCompleted) {
+          tempStreak++;
+          best = Math.max(best, tempStreak);
+          // Add streak bonus points (up to +50 per day)
+          const streakBonus = Math.min(50, tempStreak * 5);
+          points += streakBonus;
+        } else if (anyFailed) {
+          tempStreak = 0;
         }
-      } else {
-        tempStreak = 0;
       }
     }
+    
+    current = tempStreak;
 
-    // Jika hari ini dan kemarin tidak ada yang selesai, current streak putus
-    const lastDate = sortedDates[sortedDates.length - 1];
-    if (lastDate) {
-      const lastDateObj = new Date(lastDate);
-      const todayObj = new Date(today);
-      const diffTime = Math.abs(todayObj.getTime() - lastDateObj.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays > 1) {
-        current = 0;
-      }
+    // Calculate level
+    let level = 1;
+    let currentLevelPoints = 0;
+    let nextLevelPoints = 100;
+    while (points >= nextLevelPoints) {
+      level++;
+      currentLevelPoints = nextLevelPoints;
+      nextLevelPoints = currentLevelPoints + 50 * (level + 1);
     }
 
-    // Calculate badges
+    // Calculate badges based on new levels and streaks
     const newBadges: string[] = [];
-    if (points >= 50) newBadges.push('Pemula');
-    if (points >= 200) newBadges.push('Konsisten');
-    if (points >= 500) newBadges.push('Master Habit');
-    if (points >= 1000) newBadges.push('Legenda');
+    if (level >= 3) newBadges.push('Pemula');
+    if (level >= 10) newBadges.push('Konsisten');
+    if (level >= 25) newBadges.push('Master Habit');
+    if (level >= 50) newBadges.push('Legenda');
     if (current >= 3) newBadges.push('On Fire');
     if (best >= 10) newBadges.push('Unstoppable');
+    if (best >= 30) newBadges.push('Titan');
 
     const streakExtended = current > prevCurrentStreak && current > 0;
     const newBestStreak = best > prevBestStreak && best > 0;
@@ -320,6 +357,9 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       currentStreak: current, 
       bestStreak: best, 
       totalPoints: points, 
+      level,
+      currentLevelPoints,
+      nextLevelPoints,
       badges: newBadges,
       streakExtended,
       newBestStreak

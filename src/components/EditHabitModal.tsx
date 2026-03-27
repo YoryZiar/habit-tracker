@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useHabitStore } from '../store/useHabitStore';
 import { HabitRecord } from '../services/googleSheetsService';
 import { X } from 'lucide-react';
+import { IconPicker } from './IconPicker';
 
 interface EditHabitModalProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
   const [unit, setUnit] = useState(habit.unit || '');
   const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'specific_days'>(habit.recurrence || 'daily');
   const [specificDays, setSpecificDays] = useState<number[]>(habit.specificDays || []);
+  const [icon, setIcon] = useState(habit.icon || 'Activity');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -35,6 +37,7 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
       setUnit(habit.unit || '');
       setRecurrence(habit.recurrence || 'daily');
       setSpecificDays(habit.specificDays || []);
+      setIcon(habit.icon || 'Activity');
       setError('');
     }
   }, [isOpen, habit]);
@@ -73,6 +76,7 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
         unit: type === 'quantitative' ? unit.trim() : undefined,
         recurrence,
         specificDays: recurrence === 'specific_days' ? specificDays : undefined,
+        icon,
       });
       onClose();
     } catch (err) {
@@ -118,6 +122,8 @@ const EditHabitModal: React.FC<EditHabitModalProps> = ({ isOpen, onClose, habit 
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
             />
           </div>
+
+          <IconPicker selectedIcon={icon} onSelectIcon={setIcon} />
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tipe Habit</label>

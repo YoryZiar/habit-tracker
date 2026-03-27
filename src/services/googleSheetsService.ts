@@ -8,6 +8,7 @@ export interface HabitRecord {
   createdAt: string;
   recurrence?: 'daily' | 'weekly' | 'specific_days';
   specificDays?: number[]; // 0 = Sunday, 1 = Monday, etc.
+  icon?: string;
 }
 
 export interface TodoRecord {
@@ -49,15 +50,15 @@ export const googleSheetsService = {
     const hasTodosSheet = infoData.sheets.some((s: any) => s.properties.title === TODO_SHEET_NAME);
 
     // Initialize Habit headers if empty
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:I1?key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:J1?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     const data = await res.json();
     if (!data.values || data.values.length === 0) {
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:I1?valueInputOption=RAW&key=${API_KEY}`, {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A1:J1?valueInputOption=RAW&key=${API_KEY}`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [['id', 'name', 'type', 'target', 'unit', 'records', 'createdAt', 'recurrence', 'specificDays']] })
+        body: JSON.stringify({ values: [['id', 'name', 'type', 'target', 'unit', 'records', 'createdAt', 'recurrence', 'specificDays', 'icon']] })
       });
     }
 
@@ -84,7 +85,7 @@ export const googleSheetsService = {
     const token = localStorage.getItem('gapi_access_token');
     if (!token) throw new Error('Token tidak ditemukan');
 
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I?key=${API_KEY}`, {
+    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:J?key=${API_KEY}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     
@@ -92,7 +93,7 @@ export const googleSheetsService = {
       if (res.status === 401) throw new Error('UNAUTHORIZED');
       try {
         await googleSheetsService.authenticate(token);
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I?key=${API_KEY}`, {
+        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:J?key=${API_KEY}`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         checkAuthError(res);
@@ -116,7 +117,8 @@ export const googleSheetsService = {
       records: row[5] ? JSON.parse(row[5]) : {},
       createdAt: row[6],
       recurrence: (row[7] as 'daily' | 'weekly' | 'specific_days') || 'daily',
-      specificDays: row[8] ? JSON.parse(row[8]) : []
+      specificDays: row[8] ? JSON.parse(row[8]) : [],
+      icon: row[9] || ''
     }));
   },
 
@@ -145,10 +147,11 @@ export const googleSheetsService = {
       JSON.stringify(habit.records),
       habit.createdAt,
       habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || [])
+      JSON.stringify(habit.specificDays || []),
+      habit.icon || ''
     ];
     
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A${actualRowNumber}:I${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A${actualRowNumber}:J${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'PUT',
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -172,10 +175,11 @@ export const googleSheetsService = {
       JSON.stringify(habit.records),
       habit.createdAt,
       habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || [])
+      JSON.stringify(habit.specificDays || []),
+      habit.icon || ''
     ];
     
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:I:append?valueInputOption=RAW&key=${API_KEY}`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A:J:append?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'POST',
       headers: { 
         Authorization: `Bearer ${token}`,
@@ -201,11 +205,12 @@ export const googleSheetsService = {
       JSON.stringify(habit.records),
       habit.createdAt,
       habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || [])
+      JSON.stringify(habit.specificDays || []),
+      habit.icon || ''
     ]);
 
     // Update the entire range starting from A2
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A2:I${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
+    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${SHEET_NAME}!A2:J${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
       method: 'PUT',
       headers: { 
         Authorization: `Bearer ${token}`,
