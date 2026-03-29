@@ -64,6 +64,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
+let habitUpdateQueue: Record<string, HabitRecord> = {};
+let habitSyncTimeout: NodeJS.Timeout | null = null;
+let lastSyncedHabits: HabitRecord[] | null = null;
+
 export const useHabitStore = create<HabitState>((set, get) => ({
   habits: [],
   isLoading: false,
@@ -97,6 +101,11 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   updateRecord: async (habitId, date, value) => {
     const { habits } = get();
+    
+    if (Object.keys(habitUpdateQueue).length === 0) {
+      lastSyncedHabits = habits;
+    }
+    
     const habitIndex = habits.findIndex(h => h.id === habitId);
     
     if (habitIndex === -1) return;
@@ -110,19 +119,36 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     set({ habits: newHabits });
     get().calculateGamification();
     
-    try {
-      await googleSheetsService.updateHabit(updatedHabit);
-    } catch (error) {
-      if (handleAuthError(error)) return;
-      // Revert on error
-      set({ habits, error: 'Gagal menyimpan perubahan' });
-      get().calculateGamification();
-      toast.error('Gagal menyimpan perubahan ke Google Sheets');
-    }
+    habitUpdateQueue[updatedHabit.id] = updatedHabit;
+    
+    if (habitSyncTimeout) clearTimeout(habitSyncTimeout);
+    habitSyncTimeout = setTimeout(async () => {
+      const habitsToUpdate = Object.values(habitUpdateQueue);
+      habitUpdateQueue = {};
+      
+      try {
+        await googleSheetsService.batchUpdateHabits(habitsToUpdate);
+        lastSyncedHabits = null;
+      } catch (error) {
+        if (handleAuthError(error)) return;
+        // Revert on error
+        if (lastSyncedHabits) {
+          set({ habits: lastSyncedHabits, error: 'Gagal menyimpan perubahan' });
+          get().calculateGamification();
+          lastSyncedHabits = null;
+        }
+        toast.error('Gagal menyimpan perubahan ke Google Sheets');
+      }
+    }, 1000);
   },
   
   editHabit: async (id, updatedData) => {
     const { habits } = get();
+    
+    if (Object.keys(habitUpdateQueue).length === 0) {
+      lastSyncedHabits = habits;
+    }
+    
     const habitIndex = habits.findIndex(h => h.id === id);
     
     if (habitIndex === -1) return;
@@ -133,15 +159,27 @@ export const useHabitStore = create<HabitState>((set, get) => ({
     set({ habits: newHabits });
     get().calculateGamification();
     
-    try {
-      await googleSheetsService.updateHabit(updatedHabit);
-      toast.success('Habit berhasil diperbarui');
-    } catch (error) {
-      if (handleAuthError(error)) return;
-      set({ habits, error: 'Gagal mengedit habit' });
-      get().calculateGamification();
-      toast.error('Gagal mengedit habit');
-    }
+    habitUpdateQueue[updatedHabit.id] = updatedHabit;
+    
+    if (habitSyncTimeout) clearTimeout(habitSyncTimeout);
+    habitSyncTimeout = setTimeout(async () => {
+      const habitsToUpdate = Object.values(habitUpdateQueue);
+      habitUpdateQueue = {};
+      
+      try {
+        await googleSheetsService.batchUpdateHabits(habitsToUpdate);
+        lastSyncedHabits = null;
+        toast.success('Habit berhasil diperbarui');
+      } catch (error) {
+        if (handleAuthError(error)) return;
+        if (lastSyncedHabits) {
+          set({ habits: lastSyncedHabits, error: 'Gagal mengedit habit' });
+          get().calculateGamification();
+          lastSyncedHabits = null;
+        }
+        toast.error('Gagal mengedit habit');
+      }
+    }, 1000);
   },
   
   addHabit: async (newHabitData) => {

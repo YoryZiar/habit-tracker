@@ -10,10 +10,18 @@ const SCOPES = 'https://www.googleapis.com/auth/spreadsheets';
 const Login: React.FC = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [spreadsheetId, setSpreadsheetId] = useState(localStorage.getItem('spreadsheet_id') || import.meta.env.VITE_SPREADSHEET_ID || '');
   const login = useAuthStore((state) => state.login);
 
   const handleGoogleLogin = () => {
     setError('');
+    
+    if (!spreadsheetId.trim()) {
+      setError('Silakan masukkan ID Spreadsheet');
+      return;
+    }
+    
+    localStorage.setItem('spreadsheet_id', spreadsheetId.trim());
     setIsLoading(true);
     
     try {
@@ -64,6 +72,22 @@ const Login: React.FC = () => {
               {error}
             </div>
           )}
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              ID Google Spreadsheet
+            </label>
+            <input
+              type="text"
+              value={spreadsheetId}
+              onChange={(e) => setSpreadsheetId(e.target.value)}
+              placeholder="Masukkan ID Spreadsheet Anda"
+              className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Contoh: 1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms
+            </p>
+          </div>
           
           <button
             onClick={handleGoogleLogin}

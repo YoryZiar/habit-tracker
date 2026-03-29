@@ -8,7 +8,7 @@ import { TodoRecord } from '../services/googleSheetsService';
 interface SortableTodoItemProps {
   todo: TodoRecord;
   toggleTodo: (id: string) => void;
-  startEdit: (id: string, text: string, dueDate?: string, description?: string) => void;
+  startEdit: (id: string, text: string, dueDate?: string, description?: string, priority?: 'low' | 'medium' | 'high') => void;
   handleDelete: (id: string) => void;
   isOverdue: (dueDate?: string) => boolean;
 }
@@ -70,9 +70,20 @@ export const SortableTodoItem: React.FC<SortableTodoItemProps> = ({
             <Circle className="w-6 h-6" />
           </motion.button>
           <div className="flex flex-col">
-            <span className="text-gray-700 font-medium">
-              {todo.text}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700 font-medium">
+                {todo.text}
+              </span>
+              {todo.priority && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium uppercase tracking-wider ${
+                  todo.priority === 'high' ? 'bg-red-100 text-red-700' :
+                  todo.priority === 'medium' ? 'bg-orange-100 text-orange-700' :
+                  'bg-blue-100 text-blue-700'
+                }`}>
+                  {todo.priority === 'high' ? 'Tinggi' : todo.priority === 'medium' ? 'Sedang' : 'Rendah'}
+                </span>
+              )}
+            </div>
             {todo.description && (
               <span className="text-gray-500 text-sm mt-0.5 line-clamp-2">
                 {todo.description}
@@ -89,7 +100,7 @@ export const SortableTodoItem: React.FC<SortableTodoItemProps> = ({
         </div>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-4">
           <button 
-            onClick={() => startEdit(todo.id, todo.text, todo.dueDate, todo.description)}
+            onClick={() => startEdit(todo.id, todo.text, todo.dueDate, todo.description, todo.priority)}
             className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-colors"
           >
             <Edit2 className="w-4 h-4" />

@@ -36,11 +36,13 @@ const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
   const [newTodo, setNewTodo] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [newPriority, setNewPriority] = useState<'low' | 'medium' | 'high'>('medium');
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editDueDate, setEditDueDate] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [editPriority, setEditPriority] = useState<'low' | 'medium' | 'high'>('medium');
   
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
 
@@ -74,10 +76,11 @@ const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTodo.trim()) return;
-    await addTodo(newTodo.trim(), newDueDate || undefined, newDescription.trim() || undefined);
+    await addTodo(newTodo.trim(), newDueDate || undefined, newDescription.trim() || undefined, newPriority);
     setNewTodo('');
     setNewDueDate('');
     setNewDescription('');
+    setNewPriority('medium');
     setIsTodoModalOpen(false);
   };
 
@@ -86,22 +89,24 @@ const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
     setNewTodo('');
     setNewDueDate('');
     setNewDescription('');
+    setNewPriority('medium');
     setIsTodoModalOpen(true);
   };
 
-  const startEdit = (id: string, text: string, dueDate?: string, description?: string) => {
+  const startEdit = (id: string, text: string, dueDate?: string, description?: string, priority?: 'low' | 'medium' | 'high') => {
     setModalMode('edit');
     setEditingId(id);
     setEditText(text);
     setEditDueDate(dueDate || '');
     setEditDescription(description || '');
+    setEditPriority(priority || 'medium');
     setIsTodoModalOpen(true);
   };
 
   const saveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingId && editText.trim()) {
-      await editTodo(editingId, editText.trim(), editDueDate || undefined, editDescription.trim() || undefined);
+      await editTodo(editingId, editText.trim(), editDueDate || undefined, editDescription.trim() || undefined, editPriority);
       setEditingId(null);
       setIsTodoModalOpen(false);
     }
@@ -380,6 +385,21 @@ const TodoPage: React.FC<TodoPageProps> = ({ onNavigate }) => {
                     onChange={(e) => modalMode === 'add' ? setNewDueDate(e.target.value) : setEditDueDate(e.target.value)}
                     className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-600"
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" /> Prioritas
+                  </label>
+                  <select
+                    value={modalMode === 'add' ? newPriority : editPriority}
+                    onChange={(e) => modalMode === 'add' ? setNewPriority(e.target.value as 'low' | 'medium' | 'high') : setEditPriority(e.target.value as 'low' | 'medium' | 'high')}
+                    className="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-600 bg-white"
+                  >
+                    <option value="low">Rendah</option>
+                    <option value="medium">Sedang</option>
+                    <option value="high">Tinggi</option>
+                  </select>
                 </div>
               </div>
               

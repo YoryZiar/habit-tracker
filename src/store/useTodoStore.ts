@@ -17,13 +17,17 @@ interface TodoState {
   isLoading: boolean;
   error: string | null;
   fetchTodos: (retryCount?: number) => Promise<void>;
-  addTodo: (text: string, dueDate?: string, description?: string) => Promise<void>;
+  addTodo: (text: string, dueDate?: string, description?: string, priority?: 'low' | 'medium' | 'high') => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
-  editTodo: (id: string, newText: string, newDueDate?: string, newDescription?: string) => Promise<void>;
+  editTodo: (id: string, newText: string, newDueDate?: string, newDescription?: string, newPriority?: 'low' | 'medium' | 'high') => Promise<void>;
   clearCompleted: () => Promise<void>;
   reorderTodos: (newTodos: TodoRecord[]) => Promise<void>;
 }
+
+let todoUpdateQueue: Record<string, TodoRecord> = {};
+let todoSyncTimeout: NodeJS.Timeout | null = null;
+let lastSyncedTodos: TodoRecord[] | null = null;
 
 export const useTodoStore = create<TodoState>((set, get) => ({
   todos: [],
@@ -49,14 +53,15 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  addTodo: async (text: string, dueDate?: string, description?: string) => {
+  addTodo: async (text: string, dueDate?: string, description?: string, priority?: 'low' | 'medium' | 'high') => {
     const newTodo: TodoRecord = {
       id: Date.now().toString(),
       text,
       completed: false,
       createdAt: new Date().toISOString(),
       dueDate,
-      description
+      description,
+      priority
     };
     
     // Optimistic update
@@ -73,7 +78,13 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   },
 
   toggleTodo: async (id: string) => {
-    const todoToToggle = get().todos.find(t => t.id === id);
+    const { todos } = get();
+    
+    if (Object.keys(todoUpdateQueue).length === 0) {
+      lastSyncedTodos = todos;
+    }
+    
+    const todoToToggle = todos.find(t => t.id === id);
     if (!todoToToggle) return;
 
     const updatedTodo = { ...todoToToggle, completed: !todoToToggle.completed };
@@ -83,16 +94,26 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       todos: state.todos.map(todo => todo.id === id ? updatedTodo : todo)
     }));
     
-    try {
-      await googleSheetsService.updateTodo(updatedTodo);
-    } catch (error) {
-      if (handleAuthError(error)) return;
-      // Revert on failure
-      set((state) => ({
-        todos: state.todos.map(todo => todo.id === id ? todoToToggle : todo)
-      }));
-      toast.error('Gagal memperbarui status tugas');
-    }
+    todoUpdateQueue[updatedTodo.id] = updatedTodo;
+    
+    if (todoSyncTimeout) clearTimeout(todoSyncTimeout);
+    todoSyncTimeout = setTimeout(async () => {
+      const todosToUpdate = Object.values(todoUpdateQueue);
+      todoUpdateQueue = {};
+      
+      try {
+        await googleSheetsService.batchUpdateTodos(todosToUpdate);
+        lastSyncedTodos = null;
+      } catch (error) {
+        if (handleAuthError(error)) return;
+        // Revert on failure
+        if (lastSyncedTodos) {
+          set({ todos: lastSyncedTodos });
+          lastSyncedTodos = null;
+        }
+        toast.error('Gagal memperbarui status tugas');
+      }
+    }, 1000);
   },
 
   deleteTodo: async (id: string) => {
@@ -112,46 +133,61 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
-  editTodo: async (id: string, newText: string, newDueDate?: string, newDescription?: string) => {
-    const todoToEdit = get().todos.find(t => t.id === id);
+  editTodo: async (id: string, newText: string, newDueDate?: string, newDescription?: string, newPriority?: 'low' | 'medium' | 'high') => {
+    const { todos } = get();
+    
+    if (Object.keys(todoUpdateQueue).length === 0) {
+      lastSyncedTodos = todos;
+    }
+    
+    const todoToEdit = todos.find(t => t.id === id);
     if (!todoToEdit) return;
 
-    const updatedTodo = { ...todoToEdit, text: newText, dueDate: newDueDate, description: newDescription };
+    const updatedTodo = { ...todoToEdit, text: newText, dueDate: newDueDate, description: newDescription, priority: newPriority };
     
     // Optimistic update
     set((state) => ({
       todos: state.todos.map(todo => todo.id === id ? updatedTodo : todo)
     }));
     
-    try {
-      await googleSheetsService.updateTodo(updatedTodo);
-    } catch (error) {
-      if (handleAuthError(error)) return;
-      // Revert on failure
-      set((state) => ({
-        todos: state.todos.map(todo => todo.id === id ? todoToEdit : todo)
-      }));
-      toast.error('Gagal memperbarui teks tugas');
-    }
+    todoUpdateQueue[updatedTodo.id] = updatedTodo;
+    
+    if (todoSyncTimeout) clearTimeout(todoSyncTimeout);
+    todoSyncTimeout = setTimeout(async () => {
+      const todosToUpdate = Object.values(todoUpdateQueue);
+      todoUpdateQueue = {};
+      
+      try {
+        await googleSheetsService.batchUpdateTodos(todosToUpdate);
+        lastSyncedTodos = null;
+      } catch (error) {
+        if (handleAuthError(error)) return;
+        // Revert on failure
+        if (lastSyncedTodos) {
+          set({ todos: lastSyncedTodos });
+          lastSyncedTodos = null;
+        }
+        toast.error('Gagal memperbarui teks tugas');
+      }
+    }, 1000);
   },
 
   clearCompleted: async () => {
-    const completedTodos = get().todos.filter(t => t.completed);
+    const { todos } = get();
+    const completedTodos = todos.filter(t => t.completed);
     if (completedTodos.length === 0) return;
 
     // Optimistic update
     set((state) => ({ todos: state.todos.filter(t => !t.completed) }));
 
     try {
-      // Delete one by one since we don't have a batch delete in googleSheetsService
-      for (const todo of completedTodos) {
-        await googleSheetsService.deleteTodo(todo.id);
-      }
+      const idsToDelete = completedTodos.map(todo => todo.id);
+      await googleSheetsService.batchDeleteTodos(idsToDelete);
       toast.success('Berhasil menghapus semua tugas yang selesai');
     } catch (error) {
       if (handleAuthError(error)) return;
       // Revert on failure
-      set((state) => ({ todos: [...state.todos, ...completedTodos] }));
+      set({ todos });
       toast.error('Gagal menghapus beberapa tugas');
     }
   },
