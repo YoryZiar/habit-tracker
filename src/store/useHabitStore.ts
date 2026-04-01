@@ -282,19 +282,27 @@ export const useHabitStore = create<HabitState>((set, get) => ({
           if (record === 'selesai') {
             points += 20;
           } else if (record === 'gagal') {
-            points -= 10;
+            points -= 30;
+          } else if (record === 'izin') {
+            points -= 5;
           } else if (!record && currentStr < today && isScheduled) {
             // Missed past scheduled day
-            points -= 10;
+            points -= 30;
+          } else if (!record && currentStr === today && isScheduled) {
+            // Empty today
+            points -= 5;
           }
         } else if (habit.type === 'quantitative') {
           if (record !== undefined && Number(record) >= habit.target) {
             points += 20;
           } else if (record !== undefined && Number(record) < habit.target) {
-            points -= 10;
+            points -= 30;
           } else if (record === undefined && currentStr < today && isScheduled) {
             // Missed past scheduled day
-            points -= 10;
+            points -= 30;
+          } else if (record === undefined && currentStr === today && isScheduled) {
+            // Empty today
+            points -= 5;
           }
         }
         

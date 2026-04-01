@@ -51,16 +51,20 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
           value = 100;
           isSuccess = true;
         } else if (record === 'gagal') {
-          points = -10;
+          points = -30;
           status = 'Gagal';
           value = 0;
         } else if (record === 'izin') {
-          points = 0;
+          points = -5;
           status = 'Izin';
           value = 50;
         } else if (d < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-          points = -10;
+          points = -30;
           status = 'Terlewat';
+          value = 0;
+        } else if (isScheduled) {
+          points = -5;
+          status = 'Kosong';
           value = 0;
         }
       } else {
@@ -72,12 +76,16 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
             status = `Tercapai (${numRecord})`;
             isSuccess = true;
           } else {
-            points = -10;
+            points = -30;
             status = `Kurang (${numRecord})`;
           }
         } else if (d < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-          points = -10;
+          points = -30;
           status = 'Terlewat';
+          value = 0;
+        } else if (isScheduled) {
+          points = -5;
+          status = 'Kosong';
           value = 0;
         }
       }
@@ -140,11 +148,13 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
             successCount++;
             totalPoints += 20;
           } else if (record === 'gagal') {
-            totalPoints -= 10;
+            totalPoints -= 30;
           } else if (record === 'izin') {
-            totalPoints += 0;
+            totalPoints -= 5;
           } else if (currentDate < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-            totalPoints -= 10;
+            totalPoints -= 30;
+          } else if (isScheduled && currentDate.getTime() === new Date(new Date().setHours(0,0,0,0)).getTime()) {
+            totalPoints -= 5;
           }
         } else {
           if (record !== undefined) {
@@ -153,10 +163,12 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
               successCount++;
               totalPoints += 20;
             } else {
-              totalPoints -= 10;
+              totalPoints -= 30;
             }
           } else if (currentDate < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-            totalPoints -= 10;
+            totalPoints -= 30;
+          } else if (isScheduled && currentDate.getTime() === new Date(new Date().setHours(0,0,0,0)).getTime()) {
+            totalPoints -= 5;
           }
         }
       }
