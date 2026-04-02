@@ -79,12 +79,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         totalProgress += Math.min(100, Math.round((completed / habit.target) * 100));
       } else {
         let totalValue = 0;
+        let scheduledDays = 0;
         weekDates.forEach(date => {
           const dateStr = formatDate(date);
+          const dayOfWeek = date.getDay();
+          
+          let isScheduled = false;
+          if (!habit.recurrence || habit.recurrence === 'daily') {
+            isScheduled = true;
+          } else if (habit.recurrence === 'specific_days') {
+            isScheduled = habit.specificDays?.includes(dayOfWeek) ?? false;
+          }
+          
+          if (isScheduled) {
+            scheduledDays++;
+          }
+
           const val = Number(habit.records[dateStr]) || 0;
           totalValue += val;
         });
-        totalProgress += Math.min(100, Math.round((totalValue / habit.target) * 100));
+        const weeklyTarget = scheduledDays * habit.target;
+        totalProgress += weeklyTarget > 0 ? Math.min(100, Math.round((totalValue / weeklyTarget) * 100)) : 0;
       }
     });
     
@@ -92,6 +107,83 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   };
 
   const weeklyProgress = calculateWeeklyProgress();
+
+  const getDailySummary = () => {
+    if (habits.length === 0) return { scheduledCount: 0, completedCount: 0, pointsToday: 0 };
+
+    const today = new Date();
+    const todayStr = formatDate(today);
+    const dayOfWeek = new Date(todayStr).getUTCDay();
+
+    let scheduledCount = 0;
+    let completedCount = 0;
+    let pointsToday = 0;
+
+    const scheduledHabits = habits.filter(habit => {
+      const habitStartDate = habit.createdAt ? habit.createdAt.split('T')[0] : '2000-01-01';
+      if (todayStr < habitStartDate) return false;
+
+      if (!habit.recurrence || habit.recurrence === 'daily') {
+        return true;
+      } else if (habit.recurrence === 'specific_days') {
+        return habit.specificDays?.includes(dayOfWeek) ?? false;
+      }
+      return false;
+    });
+
+    scheduledCount = scheduledHabits.length;
+
+    let allCompletedOrIzin = true;
+    let hasSelesai = false;
+
+    scheduledHabits.forEach(habit => {
+      const record = habit.records[todayStr];
+      let isSuccess = false;
+      let isIzin = record === 'izin';
+
+      if (habit.type === 'boolean') {
+        isSuccess = record === 'selesai';
+        if (record === 'selesai') {
+          pointsToday += 20;
+        } else if (record === 'gagal') {
+          pointsToday -= 30;
+        } else if (record === 'izin') {
+          pointsToday -= 5;
+        } else if (!record) {
+          pointsToday -= 5;
+        }
+      } else if (habit.type === 'quantitative') {
+        isSuccess = record !== undefined && Number(record) >= habit.target;
+        if (record !== undefined && Number(record) >= habit.target) {
+          pointsToday += 20;
+        } else if (record !== undefined && Number(record) < habit.target) {
+          pointsToday -= 30;
+        } else if (record === undefined) {
+          pointsToday -= 5;
+        }
+      }
+
+      if (isSuccess) {
+        completedCount++;
+        hasSelesai = true;
+      } else if (!isIzin) {
+        allCompletedOrIzin = false;
+      }
+    });
+
+    if (scheduledCount > 0 && allCompletedOrIzin && hasSelesai) {
+      const streakBonus = Math.min(50, currentStreak * 5);
+      pointsToday += streakBonus;
+    }
+
+    return {
+      scheduledCount,
+      completedCount,
+      pointsToday
+    };
+  };
+
+  const dailySummary = getDailySummary();
 
   useEffect(() => {
     fetchHabits();
@@ -185,6 +277,33 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             {error}
           </div>
         )}
+
+        {/* Daily Summary */}
+        <div className="bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl p-6 shadow-sm text-white mb-8 flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="text-center sm:text-left">
+            <h2 className="text-2xl font-bold mb-1">Ringkasan Hari Ini</h2>
+            <p className="text-green-100 text-sm">
+              {dailySummary.completedCount} dari {dailySummary.scheduledCount} habit selesai
+            </p>
+          </div>
+          <div className="flex gap-4 sm:gap-6 w-full sm:w-auto justify-center sm:justify-end">
+            <div className="flex flex-col items-center bg-white/20 rounded-xl p-3 min-w-[100px] backdrop-blur-sm">
+              <ListTodo className="w-6 h-6 mb-1 text-green-100" />
+              <span className="text-2xl font-bold">{dailySummary.completedCount}/{dailySummary.scheduledCount}</span>
+              <span className="text-xs text-green-100 uppercase tracking-wider font-medium">Selesai</span>
+            </div>
+            <div className="flex flex-col items-center bg-white/20 rounded-xl p-3 min-w-[100px] backdrop-blur-sm">
+              <TrendingUp className="w-6 h-6 mb-1 text-green-100" />
+              <span className="text-2xl font-bold">{dailySummary.pointsToday > 0 ? `+${dailySummary.pointsToday}` : dailySummary.pointsToday}</span>
+              <span className="text-xs text-green-100 uppercase tracking-wider font-medium">XP Hari Ini</span>
+            </div>
+            <div className="flex flex-col items-center bg-white/20 rounded-xl p-3 min-w-[100px] backdrop-blur-sm">
+              <Flame className="w-6 h-6 mb-1 text-orange-200" />
+              <span className="text-2xl font-bold">{currentStreak}</span>
+              <span className="text-xs text-green-100 uppercase tracking-wider font-medium">Streak</span>
+            </div>
+          </div>
+        </div>
 
         {/* Gamification Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

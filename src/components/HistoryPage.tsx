@@ -99,6 +99,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         points,
         value,
         isSuccess,
+        isScheduled,
         rawRecord: record
       });
     }
@@ -203,7 +204,13 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
           successCount++;
           currentStreak++;
           bestStreak = Math.max(bestStreak, currentStreak);
-        } else if (day.status !== 'Izin') {
+        } else if (day.status === 'Izin') {
+          // Maintain streak
+        } else if (day.status === 'Kosong' && day.date === formatDate(new Date())) {
+          // Maintain streak if today is empty
+        } else if (!day.isScheduled) {
+          // Maintain streak if not scheduled
+        } else {
           currentStreak = 0;
         }
       });
@@ -235,6 +242,14 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         const dateStr = formatDate(d);
         const record = selectedHabit?.records[dateStr];
         
+        const dayOfWeek = d.getDay();
+        let isScheduled = false;
+        if (!selectedHabit?.recurrence || selectedHabit?.recurrence === 'daily') {
+          isScheduled = true;
+        } else if (selectedHabit?.recurrence === 'specific_days') {
+          isScheduled = selectedHabit?.specificDays?.includes(dayOfWeek) ?? false;
+        }
+        
         let isSuccess = false;
         if (selectedHabit?.type === 'boolean') {
           if (record === 'selesai') isSuccess = true;
@@ -247,7 +262,13 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         if (isSuccess) {
           currentStreak++;
           bestStreak = Math.max(bestStreak, currentStreak);
-        } else if (record !== 'izin') {
+        } else if (record === 'izin') {
+          // Maintain streak
+        } else if (dateStr === formatDate(today) && record === undefined) {
+          // Maintain streak if today is empty
+        } else if (!isScheduled) {
+          // Maintain streak if not scheduled
+        } else {
           currentStreak = 0;
         }
       }
@@ -399,93 +420,146 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
                 {/* Content */}
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                   {viewMode === 'chart' ? (
-                    <div className="h-[400px] w-full">
-                      <h3 className="text-lg font-bold text-gray-800 mb-6">
-                        {timeRange === '30days' ? 'Progres 30 Hari Terakhir' : 'Tren 12 Bulan Terakhir'}
-                      </h3>
-                      <ResponsiveContainer width="100%" height="100%">
-                        {timeRange === '30days' ? (
-                          <BarChart data={historyData} margin={{ top: 5, right: 20, bottom: 25, left: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                            <XAxis 
-                              dataKey="displayDate" 
-                              axisLine={false} 
-                              tickLine={false} 
-                              tick={{ fill: '#6b7280', fontSize: 11 }} 
-                              dy={10} 
-                              angle={-45}
-                              textAnchor="end"
-                            />
-                            <YAxis 
-                              axisLine={false} 
-                              tickLine={false} 
-                              tick={{ fill: '#6b7280', fontSize: 12 }} 
-                              dx={-10} 
-                              domain={[0, 100]} 
-                            />
-                            <Tooltip 
-                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                              formatter={(value, name, props) => {
-                                return [props.payload.status, 'Status'];
-                              }}
-                              labelFormatter={(label) => `Tanggal: ${label}`}
-                            />
-                            <Bar 
-                              dataKey="value" 
-                              radius={[4, 4, 0, 0]}
-                            >
-                              {historyData.map((entry, index) => (
-                                <Cell 
-                                  key={`cell-${index}`} 
-                                  fill={entry.isSuccess ? '#3b82f6' : entry.status === 'Izin' ? '#facc15' : '#ef4444'} 
+                    <div className="w-full flex flex-col gap-8">
+                      {timeRange === '30days' ? (
+                        <div className="h-[400px] w-full">
+                          <h3 className="text-lg font-bold text-gray-800 mb-6">
+                            Progres 30 Hari Terakhir
+                          </h3>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={historyData} margin={{ top: 5, right: 20, bottom: 25, left: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                              <XAxis 
+                                dataKey="displayDate" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#6b7280', fontSize: 11 }} 
+                                dy={10} 
+                                angle={-45}
+                                textAnchor="end"
+                              />
+                              <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#6b7280', fontSize: 12 }} 
+                                dx={-10} 
+                                domain={[0, 100]} 
+                              />
+                              <Tooltip 
+                                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                formatter={(value, name, props) => {
+                                  return [props.payload.status, 'Status'];
+                                }}
+                                labelFormatter={(label) => `Tanggal: ${label}`}
+                              />
+                              <Bar 
+                                dataKey="value" 
+                                radius={[4, 4, 0, 0]}
+                              >
+                                {historyData.map((entry, index) => (
+                                  <Cell 
+                                    key={`cell-${index}`} 
+                                    fill={entry.isSuccess ? '#3b82f6' : entry.status === 'Izin' ? '#facc15' : '#ef4444'} 
+                                  />
+                                ))}
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="h-[300px] w-full">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6">
+                              Tingkat Sukses 12 Bulan Terakhir
+                            </h3>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <AreaChart data={monthlyData} margin={{ top: 5, right: 20, bottom: 25, left: 0 }}>
+                                <defs>
+                                  <linearGradient id="colorSuccess" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                                  </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                <XAxis 
+                                  dataKey="month" 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fill: '#6b7280', fontSize: 11 }} 
+                                  dy={10} 
                                 />
-                              ))}
-                            </Bar>
-                          </BarChart>
-                        ) : (
-                          <AreaChart data={monthlyData.slice().reverse()} margin={{ top: 5, right: 20, bottom: 25, left: 0 }}>
-                            <defs>
-                              <linearGradient id="colorSuccess" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                              </linearGradient>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                            <XAxis 
-                              dataKey="month" 
-                              axisLine={false} 
-                              tickLine={false} 
-                              tick={{ fill: '#6b7280', fontSize: 11 }} 
-                              dy={10} 
-                            />
-                            <YAxis 
-                              axisLine={false} 
-                              tickLine={false} 
-                              tick={{ fill: '#6b7280', fontSize: 12 }} 
-                              dx={-10} 
-                              domain={[0, 100]} 
-                            />
-                            <Tooltip 
-                              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                              formatter={(value) => [`${value}%`, 'Tingkat Sukses']}
-                              labelFormatter={(label, payload) => {
-                                if (payload && payload.length > 0) {
-                                  return `Bulan: ${payload[0].payload.fullMonth}`;
-                                }
-                                return label;
-                              }}
-                            />
-                            <Area 
-                              type="monotone" 
-                              dataKey="successRate" 
-                              stroke="#3b82f6" 
-                              strokeWidth={3}
-                              fillOpacity={1} 
-                              fill="url(#colorSuccess)" 
-                            />
-                          </AreaChart>
-                        )}
-                      </ResponsiveContainer>
+                                <YAxis 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fill: '#6b7280', fontSize: 12 }} 
+                                  dx={-10} 
+                                  domain={[0, 100]} 
+                                />
+                                <Tooltip 
+                                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                  formatter={(value) => [`${value}%`, 'Tingkat Sukses']}
+                                  labelFormatter={(label, payload) => {
+                                    if (payload && payload.length > 0) {
+                                      return `Bulan: ${payload[0].payload.fullMonth}`;
+                                    }
+                                    return label;
+                                  }}
+                                />
+                                <Area 
+                                  type="monotone" 
+                                  dataKey="successRate" 
+                                  stroke="#3b82f6" 
+                                  strokeWidth={3}
+                                  fillOpacity={1} 
+                                  fill="url(#colorSuccess)" 
+                                />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          </div>
+                          
+                          <div className="h-[300px] w-full">
+                            <h3 className="text-lg font-bold text-gray-800 mb-6">
+                              XP Diperoleh 12 Bulan Terakhir
+                            </h3>
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={monthlyData} margin={{ top: 5, right: 20, bottom: 25, left: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                                <XAxis 
+                                  dataKey="month" 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fill: '#6b7280', fontSize: 11 }} 
+                                  dy={10} 
+                                />
+                                <YAxis 
+                                  axisLine={false} 
+                                  tickLine={false} 
+                                  tick={{ fill: '#6b7280', fontSize: 12 }} 
+                                  dx={-10} 
+                                />
+                                <Tooltip 
+                                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                                  formatter={(value) => [`${value} XP`, 'Total XP']}
+                                  labelFormatter={(label, payload) => {
+                                    if (payload && payload.length > 0) {
+                                      return `Bulan: ${payload[0].payload.fullMonth}`;
+                                    }
+                                    return label;
+                                  }}
+                                />
+                                <Bar dataKey="totalPoints" radius={[4, 4, 0, 0]}>
+                                  {monthlyData.map((entry, index) => (
+                                    <Cell 
+                                      key={`cell-xp-${index}`} 
+                                      fill={entry.totalPoints >= 0 ? '#10b981' : '#ef4444'} 
+                                    />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ) : (
                     <div>
@@ -535,7 +609,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
                               </tr>
                             </thead>
                             <tbody>
-                              {monthlyData.map((month, idx) => (
+                              {monthlyData.slice().reverse().map((month, idx) => (
                                 <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                                   <td className="py-3 px-4 text-sm text-gray-800 font-medium">{month.fullMonth}</td>
                                   <td className="py-3 px-4">

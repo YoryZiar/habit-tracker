@@ -183,7 +183,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Target Mingguan
+                {type === 'boolean' ? 'Target Hari per Minggu' : 'Target Harian'}
               </label>
               <input
                 type="number"
@@ -191,7 +191,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
                 max={type === 'boolean' ? 7 : undefined}
                 value={target}
                 onChange={(e) => setTarget(e.target.value ? Number(e.target.value) : '')}
-                placeholder={type === 'boolean' ? "Maks 7 hari" : "Contoh: 10000"}
+                placeholder={type === 'boolean' ? "Maks 7 hari" : "Contoh: 20"}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
               />
             </div>
@@ -205,7 +205,7 @@ const AddHabitModal: React.FC<AddHabitModalProps> = ({ isOpen, onClose }) => {
                   type="text"
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
-                  placeholder="Contoh: Langkah, Liter"
+                  placeholder="Contoh: Menit, Gelas"
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors"
                 />
               </div>

@@ -339,12 +339,14 @@ export const useHabitStore = create<HabitState>((set, get) => ({
       });
 
       if (scheduledHabits.length > 0) {
-        let allCompleted = true;
+        let allCompletedOrIzin = true;
         let anyFailed = false;
+        let hasSelesai = false;
 
         scheduledHabits.forEach(habit => {
           const record = habit.records[dateStr];
           let isSuccess = false;
+          let isIzin = record === 'izin';
           
           if (habit.type === 'boolean') {
             isSuccess = record === 'selesai';
@@ -352,17 +354,19 @@ export const useHabitStore = create<HabitState>((set, get) => ({
             isSuccess = record !== undefined && Number(record) >= habit.target;
           }
 
-          if (!isSuccess) {
-            allCompleted = false;
+          if (isSuccess) {
+            hasSelesai = true;
+          } else if (!isIzin) {
+            allCompletedOrIzin = false;
             if (record === 'gagal') {
               anyFailed = true;
-            } else if (record !== 'izin' && dateStr < today) {
+            } else if (dateStr < today) {
               anyFailed = true;
             }
           }
         });
 
-        if (allCompleted) {
+        if (allCompletedOrIzin && hasSelesai) {
           tempStreak++;
           best = Math.max(best, tempStreak);
           // Add streak bonus points (up to +50 per day)

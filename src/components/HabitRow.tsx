@@ -58,12 +58,27 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
       return Math.min(100, Math.round((completed / habit.target) * 100));
     } else {
       let totalValue = 0;
+      let scheduledDays = 0;
       weekDates.forEach(date => {
         const dateStr = formatDate(date);
+        const dayOfWeek = date.getDay();
+        
+        let isScheduled = false;
+        if (!habit.recurrence || habit.recurrence === 'daily') {
+          isScheduled = true;
+        } else if (habit.recurrence === 'specific_days') {
+          isScheduled = habit.specificDays?.includes(dayOfWeek) ?? false;
+        }
+        
+        if (isScheduled) {
+          scheduledDays++;
+        }
+
         const val = Number(habit.records[dateStr]) || 0;
         totalValue += val;
       });
-      return Math.min(100, Math.round((totalValue / habit.target) * 100));
+      const weeklyTarget = scheduledDays * habit.target;
+      return weeklyTarget > 0 ? Math.min(100, Math.round((totalValue / weeklyTarget) * 100)) : 0;
     }
   };
 
@@ -126,24 +141,13 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
     }
 
     let currentStr = todayStr;
-    
-    // Check if today is completed
-    const isTodayCompleted = habit.type === 'boolean' 
-      ? habit.records[todayStr] === 'selesai'
-      : Number(habit.records[todayStr]) >= habit.target;
-      
-    if (!isTodayCompleted) {
-      // If today is not completed, start checking from yesterday
-      const yesterday = new Date(today);
-      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-      currentStr = formatDate(yesterday);
-    }
+    const habitStartDate = habit.createdAt ? habit.createdAt.split('T')[0] : '2000-01-01';
     
     // Safety limit to prevent infinite loops
     let iterations = 0;
     const maxIterations = 365 * 2; // Check up to 2 years
     
-    while (iterations < maxIterations) {
+    while (iterations < maxIterations && currentStr >= habitStartDate) {
       iterations++;
       const currentDateObj = new Date(currentStr);
       const dayOfWeek = currentDateObj.getUTCDay();
@@ -160,13 +164,24 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
       
       const isCompleted = habit.type === 'boolean'
         ? habit.records[currentStr] === 'selesai'
-        : Number(habit.records[currentStr]) >= habit.target;
+        : habit.records[currentStr] !== undefined && Number(habit.records[currentStr]) >= habit.target;
         
+      const isIzin = habit.records[currentStr] === 'izin';
+
       if (isCompleted) {
         streak++;
         currentDateObj.setUTCDate(currentDateObj.getUTCDate() - 1);
         currentStr = currentDateObj.toISOString().split('T')[0];
+      } else if (isIzin) {
+        currentDateObj.setUTCDate(currentDateObj.getUTCDate() - 1);
+        currentStr = currentDateObj.toISOString().split('T')[0];
+      } else if (currentStr === todayStr) {
+        // If today is not completed and not izin, it's okay, the day is not over.
+        // Just move to yesterday and continue checking the streak.
+        currentDateObj.setUTCDate(currentDateObj.getUTCDate() - 1);
+        currentStr = currentDateObj.toISOString().split('T')[0];
       } else {
+        // Streak broken
         break;
       }
     }
