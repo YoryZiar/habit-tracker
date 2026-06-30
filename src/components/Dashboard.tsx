@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useHabitStore } from '../store/useHabitStore';
-import { getWeekDates, formatDate } from '../utils/dateUtils';
+import { getWeekDates, formatDate, MONTH_NAMES_SHORT } from '../utils/dateUtils';
+import { HabitRecord } from '../services/googleSheetsService';
 import HabitRow from './HabitRow';
 import AddHabitModal from './AddHabitModal';
 import EditHabitModal from './EditHabitModal';
@@ -30,15 +31,20 @@ interface DashboardProps {
   onNavigate: (page: 'dashboard' | 'todos' | 'history') => void;
 }
 
+interface ChartDataPoint {
+  name: string;
+  persentase: number;
+}
+
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
-  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, level, currentLevelPoints, nextLevelPoints, badges, reorderHabits } = useHabitStore();
+  const { habits, isLoading, error, fetchHabits, currentStreak, bestStreak, totalPoints, level, currentLevelPoints, nextLevelPoints, badges, reorderHabits, streakExtended, newBestStreak, clearStreakAnimations, deleteHabit } = useHabitStore();
   const [weekDates, setWeekDates] = useState<Date[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedChartHabitId, setSelectedChartHabitId] = useState<string>('all');
-  const [editingHabit, setEditingHabit] = useState<any>(null);
-  const [calendarHabit, setCalendarHabit] = useState<any>(null);
-  const [deletingHabit, setDeletingHabit] = useState<any>(null);
+  const [editingHabit, setEditingHabit] = useState<HabitRecord | null>(null);
+  const [calendarHabit, setCalendarHabit] = useState<HabitRecord | null>(null);
+  const [deletingHabit, setDeletingHabit] = useState<HabitRecord | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -229,8 +235,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
 
         const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
         
-        const startLabel = `${weekStart.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][weekStart.getMonth()]}`;
-        const endLabel = `${weekEnd.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][weekEnd.getMonth()]}`;
+        const startLabel = `${weekStart.getDate()} ${MONTH_NAMES_SHORT[weekStart.getMonth()]}`;
+        const endLabel = `${weekEnd.getDate()} ${MONTH_NAMES_SHORT[weekEnd.getMonth()]}`;
 
         data.push({
           name: w === 0 ? 'Minggu Ini' : `${startLabel} - ${endLabel}`,
@@ -309,11 +315,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <motion.div 
             className="bg-white rounded-2xl p-6 shadow-sm border border-orange-100 flex items-center gap-4 relative overflow-hidden"
-            animate={useHabitStore.getState().streakExtended ? { scale: [1, 1.05, 1], borderColor: ['#ffedd5', '#f97316', '#ffedd5'] } : {}}
+            animate={streakExtended ? { scale: [1, 1.05, 1], borderColor: ['#ffedd5', '#f97316', '#ffedd5'] } : {}}
             transition={{ duration: 0.5 }}
-            onAnimationComplete={() => useHabitStore.getState().clearStreakAnimations()}
+            onAnimationComplete={() => clearStreakAnimations()}
           >
-            {useHabitStore.getState().streakExtended && (
+            {streakExtended && (
               <motion.div 
                 className="absolute inset-0 bg-orange-500/10"
                 initial={{ opacity: 0 }}
@@ -323,7 +329,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             )}
             <div className="bg-orange-100 p-4 rounded-full shrink-0 relative">
               <Flame className="w-8 h-8 text-orange-500" />
-              {useHabitStore.getState().streakExtended && (
+              {streakExtended && (
                 <motion.div
                   className="absolute -top-1 -right-1 text-orange-500 font-bold text-xs bg-white rounded-full px-1 shadow-sm"
                   initial={{ y: 10, opacity: 0 }}
@@ -342,10 +348,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
           
           <motion.div 
             className="bg-white rounded-2xl p-6 shadow-sm border border-yellow-100 flex items-center gap-4 relative overflow-hidden"
-            animate={useHabitStore.getState().newBestStreak ? { scale: [1, 1.05, 1], borderColor: ['#fef9c3', '#eab308', '#fef9c3'] } : {}}
+            animate={newBestStreak ? { scale: [1, 1.05, 1], borderColor: ['#fef9c3', '#eab308', '#fef9c3'] } : {}}
             transition={{ duration: 0.5 }}
           >
-            {useHabitStore.getState().newBestStreak && (
+            {newBestStreak && (
               <motion.div 
                 className="absolute inset-0 bg-yellow-500/10"
                 initial={{ opacity: 0 }}
@@ -355,7 +361,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             )}
             <div className="bg-yellow-100 p-4 rounded-full shrink-0 relative">
               <Trophy className="w-8 h-8 text-yellow-500" />
-              {useHabitStore.getState().newBestStreak && (
+              {newBestStreak && (
                 <motion.div
                   className="absolute -top-2 -right-2 text-yellow-500 font-bold text-xs bg-white rounded-full px-1 shadow-sm border border-yellow-200"
                   initial={{ scale: 0, rotate: -45 }}
@@ -567,7 +573,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
               </button>
               <button
                 onClick={() => {
-                  useHabitStore.getState().deleteHabit(deletingHabit.id);
+                  if (deletingHabit) deleteHabit(deletingHabit.id);
                   setDeletingHabit(null);
                 }}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-lg transition-colors shadow-sm"

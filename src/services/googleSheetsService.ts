@@ -35,6 +35,69 @@ const checkAuthError = (res: Response) => {
   return res;
 };
 
+// --- Helper: token retrieval terpusat ---
+const getToken = (): string => {
+  const token = localStorage.getItem('gapi_access_token');
+  if (!token) throw new Error('Token tidak ditemukan');
+  return token;
+};
+
+// --- Helper: konversi HabitRecord ke row array Google Sheets ---
+const habitToRow = (habit: HabitRecord): (string | number)[] => [
+  habit.id,
+  habit.name,
+  habit.type,
+  habit.target,
+  habit.unit || '',
+  JSON.stringify(habit.records),
+  habit.createdAt,
+  habit.recurrence || 'daily',
+  JSON.stringify(habit.specificDays || []),
+  habit.icon || '',
+];
+
+// --- Helper: konversi TodoRecord ke row array Google Sheets ---
+const todoToRow = (todo: TodoRecord): (string | boolean)[] => [
+  todo.id,
+  todo.text,
+  todo.completed ? 'TRUE' : 'FALSE',
+  todo.createdAt,
+  todo.dueDate || '',
+  todo.description || '',
+  todo.priority || '',
+];
+
+// --- Helper: ambil sheetId dari nama sheet ---
+const getSheetId = async (token: string, sheetName: string): Promise<number> => {
+  const resInfo = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}?key=${API_KEY}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  checkAuthError(resInfo);
+  const infoData = await resInfo.json();
+  const sheet = infoData.sheets.find((s: { properties: { title: string; sheetId: number } }) =>
+    s.properties.title === sheetName
+  );
+  if (!sheet) throw new Error(`Sheet "${sheetName}" tidak ditemukan`);
+  return sheet.properties.sheetId;
+};
+
+// --- Helper: retry fetch dengan re-authenticate jika gagal ---
+const fetchWithRetry = async (
+  url: string,
+  token: string,
+  authenticateFn: (token: string) => Promise<boolean>
+): Promise<Response> => {
+  let res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    if (res.status === 401) throw new Error('UNAUTHORIZED');
+    await authenticateFn(token);
+    res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    checkAuthError(res);
+  }
+  return res;
+};
+
 export const googleSheetsService = {
   // Autentikasi API
   authenticate: async (token: string): Promise<boolean> => {
@@ -85,33 +148,16 @@ export const googleSheetsService = {
 
   // Fetch Habits (GET)
   getHabits: async (): Promise<HabitRecord[]> => {
-    const token = localStorage.getItem('gapi_access_token');
-    if (!token) throw new Error('Token tidak ditemukan');
-
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:J?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('UNAUTHORIZED');
-      try {
-        await googleSheetsService.authenticate(token);
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:J?key=${API_KEY}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        checkAuthError(res);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'UNAUTHORIZED') throw e;
-        console.error("Error during authentication retry:", e);
-      }
-    }
+    const token = getToken();
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:J?key=${API_KEY}`;
+    const res = await fetchWithRetry(url, token, googleSheetsService.authenticate);
 
     if (!res.ok) throw new Error('Gagal mengambil data dari Google Sheets');
-    
+
     const data = await res.json();
-    if (!data.values || data.values.length <= 1) return []; // Empty or only headers
-    
-    return data.values.slice(1).map((row: any[]) => ({
+    if (!data.values || data.values.length <= 1) return [];
+
+    return data.values.slice(1).map((row: string[]) => ({
       id: row[0],
       name: row[1],
       type: row[2] as 'boolean' | 'quantitative',
@@ -125,154 +171,70 @@ export const googleSheetsService = {
     }));
   },
 
-  // Update Data (PUT)
-  updateHabit: async (habit: HabitRecord): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    
-    // Find row index
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const dataGet = await resGet.json();
-    if (!dataGet.values) return false;
-    
-    const rowIndex = dataGet.values.findIndex((row: any[]) => row[0] === habit.id);
-    if (rowIndex === -1) return false;
-    
-    const actualRowNumber = rowIndex + 1;
-    
-    const row = [
-      habit.id,
-      habit.name,
-      habit.type,
-      habit.target,
-      habit.unit || '',
-      JSON.stringify(habit.records),
-      habit.createdAt,
-      habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || []),
-      habit.icon || ''
-    ];
-    
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A${actualRowNumber}:J${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'PUT',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values: [row] })
-    }).then(checkAuthError);
-    
-    return resPut.ok;
-  },
-
   // Batch Update Habits
   batchUpdateHabits: async (habits: HabitRecord[]): Promise<boolean> => {
     if (habits.length === 0) return true;
-    const token = localStorage.getItem('gapi_access_token');
-    
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const token = getToken();
+
+    const resGet = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:A?key=${API_KEY}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const dataGet = await resGet.json();
     if (!dataGet.values) return false;
-    
+
     const data = habits.map(habit => {
-      const rowIndex = dataGet.values.findIndex((row: any[]) => row[0] === habit.id);
+      const rowIndex = dataGet.values.findIndex((row: string[]) => row[0] === habit.id);
       if (rowIndex === -1) return null;
-      
-      const actualRowNumber = rowIndex + 1;
-      const row = [
-        habit.id,
-        habit.name,
-        habit.type,
-        habit.target,
-        habit.unit || '',
-        JSON.stringify(habit.records),
-        habit.createdAt,
-        habit.recurrence || 'daily',
-        JSON.stringify(habit.specificDays || []),
-        habit.icon || ''
-      ];
-      
       return {
-        range: `${SHEET_NAME}!A${actualRowNumber}:J${actualRowNumber}`,
-        values: [row]
+        range: `${SHEET_NAME}!A${rowIndex + 1}:J${rowIndex + 1}`,
+        values: [habitToRow(habit)]
       };
     }).filter(Boolean);
 
     if (data.length === 0) return true;
 
-    const resBatch = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values:batchUpdate?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        valueInputOption: 'RAW',
-        data
-      })
-    }).then(checkAuthError);
-    
+    const resBatch = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values:batchUpdate?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valueInputOption: 'RAW', data })
+      }
+    ).then(checkAuthError);
+
     return resBatch.ok;
   },
-  
+
   // Tambah Habit Baru (POST)
   addHabit: async (habit: HabitRecord): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    const row = [
-      habit.id,
-      habit.name,
-      habit.type,
-      habit.target,
-      habit.unit || '',
-      JSON.stringify(habit.records),
-      habit.createdAt,
-      habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || []),
-      habit.icon || ''
-    ];
-    
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:J:append?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values: [row] })
-    }).then(checkAuthError);
-    
+    const token = getToken();
+
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A:J:append?valueInputOption=RAW&key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [habitToRow(habit)] })
+      }
+    ).then(checkAuthError);
+
     return res.ok;
   },
-  
+
   // Reorder Habits (Bulk Update)
   reorderHabits: async (habits: HabitRecord[]): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    if (!token) return false;
+    const token = getToken();
+    const rows = habits.map(habitToRow);
 
-    const rows = habits.map(habit => [
-      habit.id,
-      habit.name,
-      habit.type,
-      habit.target,
-      habit.unit || '',
-      JSON.stringify(habit.records),
-      habit.createdAt,
-      habit.recurrence || 'daily',
-      JSON.stringify(habit.specificDays || []),
-      habit.icon || ''
-    ]);
-
-    // Update the entire range starting from A2
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A2:J${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'PUT',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ values: rows })
-    }).then(checkAuthError);
+    const resPut = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${SHEET_NAME}!A2:J${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: rows })
+      }
+    ).then(checkAuthError);
 
     return resPut.ok;
   },
@@ -317,35 +279,16 @@ export const googleSheetsService = {
 
   // --- TODOS ---
   getTodos: async (): Promise<TodoRecord[]> => {
-    const token = localStorage.getItem('gapi_access_token');
-    if (!token) throw new Error('Token tidak ditemukan');
+    const token = getToken();
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:G?key=${API_KEY}`;
+    const res = await fetchWithRetry(url, token, googleSheetsService.authenticate);
 
-    let res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:G?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    
-    // Jika gagal (kemungkinan karena sheet Todos belum ada), coba autentikasi ulang untuk membuat sheet
-    if (!res.ok) {
-      if (res.status === 401) throw new Error('UNAUTHORIZED');
-      try {
-        await googleSheetsService.authenticate(token);
-        // Coba fetch lagi
-        res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:G?key=${API_KEY}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        checkAuthError(res);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'UNAUTHORIZED') throw e;
-        console.error("Error during authentication retry:", e);
-      }
-    }
-    
     if (!res.ok) throw new Error('Gagal mengambil data Todo dari Google Sheets');
-    
+
     const data = await res.json();
     if (!data.values || data.values.length <= 1) return [];
-    
-    return data.values.slice(1).map((row: any[]) => ({
+
+    return data.values.slice(1).map((row: string[]) => ({
       id: row[0],
       text: row[1],
       completed: row[2] === 'TRUE',
@@ -357,194 +300,135 @@ export const googleSheetsService = {
   },
 
   addTodo: async (todo: TodoRecord): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || '', todo.description || '', todo.priority || ''];
-    
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:G:append?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [row] })
-    }).then(checkAuthError);
-    
-    return res.ok;
-  },
+    const token = getToken();
 
-  updateTodo: async (todo: TodoRecord): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const dataGet = await resGet.json();
-    if (!dataGet.values) return false;
-    
-    const rowIndex = dataGet.values.findIndex((row: any[]) => row[0] === todo.id);
-    if (rowIndex === -1) return false;
-    
-    const actualRowNumber = rowIndex + 1;
-    const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || '', todo.description || '', todo.priority || ''];
-    
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A${actualRowNumber}:G${actualRowNumber}?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'PUT',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ values: [row] })
-    }).then(checkAuthError);
-    
-    return resPut.ok;
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:G:append?valueInputOption=RAW&key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [todoToRow(todo)] })
+      }
+    ).then(checkAuthError);
+
+    return res.ok;
   },
 
   batchUpdateTodos: async (todos: TodoRecord[]): Promise<boolean> => {
     if (todos.length === 0) return true;
-    const token = localStorage.getItem('gapi_access_token');
-    
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const token = getToken();
+
+    const resGet = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const dataGet = await resGet.json();
     if (!dataGet.values) return false;
-    
+
     const data = todos.map(todo => {
-      const rowIndex = dataGet.values.findIndex((row: any[]) => row[0] === todo.id);
+      const rowIndex = dataGet.values.findIndex((row: string[]) => row[0] === todo.id);
       if (rowIndex === -1) return null;
-      
-      const actualRowNumber = rowIndex + 1;
-      const row = [todo.id, todo.text, todo.completed ? 'TRUE' : 'FALSE', todo.createdAt, todo.dueDate || '', todo.description || '', todo.priority || ''];
-      
       return {
-        range: `${TODO_SHEET_NAME}!A${actualRowNumber}:G${actualRowNumber}`,
-        values: [row]
+        range: `${TODO_SHEET_NAME}!A${rowIndex + 1}:G${rowIndex + 1}`,
+        values: [todoToRow(todo)]
       };
     }).filter(Boolean);
 
     if (data.length === 0) return true;
 
-    const resBatch = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values:batchUpdate?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify({
-        valueInputOption: 'RAW',
-        data
-      })
-    }).then(checkAuthError);
-    
+    const resBatch = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values:batchUpdate?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valueInputOption: 'RAW', data })
+      }
+    ).then(checkAuthError);
+
     return resBatch.ok;
   },
 
   deleteTodo: async (id: string): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    
-    // Get sheetId for Todos
-    const resInfo = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const infoData = await resInfo.json();
-    const sheet = infoData.sheets.find((s: any) => s.properties.title === TODO_SHEET_NAME);
-    if (!sheet) return false;
-    const sheetId = sheet.properties.sheetId;
+    const token = getToken();
+    const sheetId = await getSheetId(token, TODO_SHEET_NAME);
 
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const resGet = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const dataGet = await resGet.json();
     if (!dataGet.values) return false;
-    
-    const rowIndex = dataGet.values.findIndex((row: any[]) => row[0] === id);
+
+    const rowIndex = dataGet.values.findIndex((row: string[]) => row[0] === id);
     if (rowIndex === -1) return false;
-    
-    const resDelete = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}:batchUpdate?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [
-          {
+
+    const resDelete = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}:batchUpdate?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
             deleteDimension: {
-              range: {
-                sheetId: sheetId,
-                dimension: "ROWS",
-                startIndex: rowIndex,
-                endIndex: rowIndex + 1
-              }
+              range: { sheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 }
             }
-          }
-        ]
-      })
-    }).then(checkAuthError);
-    
+          }]
+        })
+      }
+    ).then(checkAuthError);
+
     return resDelete.ok;
   },
 
   batchDeleteTodos: async (ids: string[]): Promise<boolean> => {
     if (ids.length === 0) return true;
-    const token = localStorage.getItem('gapi_access_token');
-    
-    // Get sheetId for Todos
-    const resInfo = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const infoData = await resInfo.json();
-    const sheet = infoData.sheets.find((s: any) => s.properties.title === TODO_SHEET_NAME);
-    if (!sheet) return false;
-    const sheetId = sheet.properties.sheetId;
+    const token = getToken();
+    const sheetId = await getSheetId(token, TODO_SHEET_NAME);
 
-    const resGet = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const resGet = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A:A?key=${API_KEY}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const dataGet = await resGet.json();
     if (!dataGet.values) return false;
-    
-    // Find all row indices to delete
-    const rowIndices = ids.map(id => dataGet.values.findIndex((row: any[]) => row[0] === id))
-                          .filter(index => index !== -1)
-                          .sort((a, b) => b - a); // Sort descending to delete from bottom up
-    
+
+    const rowIndices = ids
+      .map(id => dataGet.values.findIndex((row: string[]) => row[0] === id))
+      .filter(idx => idx !== -1)
+      .sort((a, b) => b - a); // descending — hapus dari bawah ke atas
+
     if (rowIndices.length === 0) return true;
-    
+
     const requests = rowIndices.map(rowIndex => ({
       deleteDimension: {
-        range: {
-          sheetId: sheetId,
-          dimension: "ROWS",
-          startIndex: rowIndex,
-          endIndex: rowIndex + 1
-        }
+        range: { sheetId, dimension: 'ROWS', startIndex: rowIndex, endIndex: rowIndex + 1 }
       }
     }));
-    
-    const resDelete = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}:batchUpdate?key=${API_KEY}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests })
-    }).then(checkAuthError);
-    
+
+    const resDelete = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}:batchUpdate?key=${API_KEY}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests })
+      }
+    ).then(checkAuthError);
+
     return resDelete.ok;
   },
 
   reorderTodos: async (todos: TodoRecord[]): Promise<boolean> => {
-    const token = localStorage.getItem('gapi_access_token');
-    if (!token) return false;
+    const token = getToken();
+    const rows = todos.map(todoToRow);
 
-    const rows = todos.map(todo => [
-      todo.id,
-      todo.text,
-      todo.completed ? 'TRUE' : 'FALSE',
-      todo.createdAt,
-      todo.dueDate || '',
-      todo.description || '',
-      todo.priority || ''
-    ]);
-
-    // Update the entire range starting from A2
-    const resPut = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A2:G${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`, {
-      method: 'PUT',
-      headers: { 
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify({ values: rows })
-    }).then(checkAuthError);
+    const resPut = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${getSpreadsheetId()}/values/${TODO_SHEET_NAME}!A2:G${Math.max(2, rows.length + 1)}?valueInputOption=RAW&key=${API_KEY}`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: rows })
+      }
+    ).then(checkAuthError);
 
     return resPut.ok;
   }

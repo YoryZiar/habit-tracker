@@ -1,5 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useHabitStore } from '../store/useHabitStore';
+import { isHabitScheduledOn } from '../utils/gamificationUtils';
+import { MONTH_NAMES_SHORT } from '../utils/dateUtils';
+import { POINTS } from '../constants/gamification';
 import { formatDate } from '../utils/dateUtils';
 import { Calendar, TrendingUp, Award, List, Activity, Star } from 'lucide-react';
 import { getIconComponent } from './IconPicker';
@@ -32,12 +35,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
       const record = selectedHabit.records[dateStr];
       
       const dayOfWeek = d.getDay();
-      let isScheduled = false;
-      if (!selectedHabit.recurrence || selectedHabit.recurrence === 'daily') {
-        isScheduled = true;
-      } else if (selectedHabit.recurrence === 'specific_days') {
-        isScheduled = selectedHabit.specificDays?.includes(dayOfWeek) ?? false;
-      }
+      const isScheduled = isHabitScheduledOn(selectedHabit, d);
 
       let points = 0;
       let status = 'Kosong';
@@ -46,24 +44,24 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
 
       if (selectedHabit.type === 'boolean') {
         if (record === 'selesai') {
-          points = 20;
+          points = POINTS.SUCCESS;
           status = 'Selesai';
           value = 100;
           isSuccess = true;
         } else if (record === 'gagal') {
-          points = -30;
+          points = -Math.abs(POINTS.FAIL);
           status = 'Gagal';
           value = 0;
         } else if (record === 'izin') {
-          points = -5;
+          points = POINTS.IZIN;
           status = 'Izin';
           value = 50;
         } else if (d < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-          points = -30;
+          points = -Math.abs(POINTS.FAIL);
           status = 'Terlewat';
           value = 0;
         } else if (isScheduled) {
-          points = -5;
+          points = POINTS.IZIN;
           status = 'Kosong';
           value = 0;
         }
@@ -72,19 +70,19 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
           const numRecord = Number(record);
           value = Math.min(100, Math.round((numRecord / selectedHabit.target) * 100));
           if (numRecord >= selectedHabit.target) {
-            points = 20;
+            points = POINTS.SUCCESS;
             status = `Tercapai (${numRecord})`;
             isSuccess = true;
           } else {
-            points = -30;
+            points = -Math.abs(POINTS.FAIL);
             status = `Kurang (${numRecord})`;
           }
         } else if (d < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-          points = -30;
+          points = -Math.abs(POINTS.FAIL);
           status = 'Terlewat';
           value = 0;
         } else if (isScheduled) {
-          points = -5;
+          points = POINTS.IZIN;
           status = 'Kosong';
           value = 0;
         }
@@ -94,7 +92,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
 
       data.push({
         date: dateStr,
-        displayDate: `${d.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][d.getMonth()]}`,
+        displayDate: `${d.getDate()} ${MONTH_NAMES_SHORT[d.getMonth()]}`,
         status,
         points,
         value,
@@ -115,7 +113,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
     
     for (let i = 11; i >= 0; i--) {
       const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
-      const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'][d.getMonth()];
+      const monthName = MONTH_NAMES_SHORT[d.getMonth()];
       const year = d.getFullYear();
       
       let daysInMonth = new Date(year, d.getMonth() + 1, 0).getDate();
@@ -133,12 +131,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         const record = selectedHabit.records[dateStr];
         
         const dayOfWeek = currentDate.getDay();
-        let isScheduled = false;
-        if (!selectedHabit.recurrence || selectedHabit.recurrence === 'daily') {
-          isScheduled = true;
-        } else if (selectedHabit.recurrence === 'specific_days') {
-          isScheduled = selectedHabit.specificDays?.includes(dayOfWeek) ?? false;
-        }
+        const isScheduled = isHabitScheduledOn(selectedHabit, currentDate);
 
         if (isScheduled) {
           validDays++;
@@ -147,29 +140,29 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         if (selectedHabit.type === 'boolean') {
           if (record === 'selesai') {
             successCount++;
-            totalPoints += 20;
+            totalPoints += POINTS.SUCCESS;
           } else if (record === 'gagal') {
-            totalPoints -= 30;
+            totalPoints -= Math.abs(POINTS.FAIL);
           } else if (record === 'izin') {
-            totalPoints -= 5;
+            totalPoints += POINTS.IZIN;
           } else if (currentDate < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-            totalPoints -= 30;
+            totalPoints -= Math.abs(POINTS.FAIL);
           } else if (isScheduled && currentDate.getTime() === new Date(new Date().setHours(0,0,0,0)).getTime()) {
-            totalPoints -= 5;
+            totalPoints += POINTS.IZIN;
           }
         } else {
           if (record !== undefined) {
             const numRecord = Number(record);
             if (numRecord >= selectedHabit.target) {
               successCount++;
-              totalPoints += 20;
+              totalPoints += POINTS.SUCCESS;
             } else {
-              totalPoints -= 30;
+              totalPoints -= Math.abs(POINTS.FAIL);
             }
           } else if (currentDate < new Date(new Date().setHours(0,0,0,0)) && isScheduled) {
-            totalPoints -= 30;
+            totalPoints -= Math.abs(POINTS.FAIL);
           } else if (isScheduled && currentDate.getTime() === new Date(new Date().setHours(0,0,0,0)).getTime()) {
-            totalPoints -= 5;
+            totalPoints += POINTS.IZIN;
           }
         }
       }
@@ -243,12 +236,7 @@ const HistoryPage: React.FC<HistoryPageProps> = ({ onNavigate }) => {
         const record = selectedHabit?.records[dateStr];
         
         const dayOfWeek = d.getDay();
-        let isScheduled = false;
-        if (!selectedHabit?.recurrence || selectedHabit?.recurrence === 'daily') {
-          isScheduled = true;
-        } else if (selectedHabit?.recurrence === 'specific_days') {
-          isScheduled = selectedHabit?.specificDays?.includes(dayOfWeek) ?? false;
-        }
+        const isScheduled = selectedHabit ? isHabitScheduledOn(selectedHabit, d) : false;
         
         let isSuccess = false;
         if (selectedHabit?.type === 'boolean') {

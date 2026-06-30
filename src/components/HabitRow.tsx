@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { HabitRecord } from '../services/googleSheetsService';
+import { isHabitScheduledOn } from '../utils/gamificationUtils';
 import { formatDate } from '../utils/dateUtils';
 import { useHabitStore } from '../store/useHabitStore';
 import { Check, X, Minus, Pencil, Trash2, CalendarDays, GripVertical, Flame } from 'lucide-react';
@@ -62,14 +63,8 @@ const HabitRow: React.FC<HabitRowProps> = ({ habit, weekDates, onEdit, onCalenda
       weekDates.forEach(date => {
         const dateStr = formatDate(date);
         const dayOfWeek = date.getDay();
-        
-        let isScheduled = false;
-        if (!habit.recurrence || habit.recurrence === 'daily') {
-          isScheduled = true;
-        } else if (habit.recurrence === 'specific_days') {
-          isScheduled = habit.specificDays?.includes(dayOfWeek) ?? false;
-        }
-        
+
+        const isScheduled = isHabitScheduledOn(habit, date);
         if (isScheduled) {
           scheduledDays++;
         }

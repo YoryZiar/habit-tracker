@@ -1,16 +1,9 @@
 import { create } from 'zustand';
 import { googleSheetsService, HabitRecord } from '../services/googleSheetsService';
 import { formatDate } from '../utils/dateUtils';
+import { handleAuthError } from '../utils/authUtils';
+import { calculateGamification } from '../utils/gamificationUtils';
 import toast from 'react-hot-toast';
-
-const handleAuthError = (error: any) => {
-  if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-    useAuthStore.getState().logout();
-    toast.error('Sesi Anda telah berakhir. Silakan masuk kembali.');
-    return true;
-  }
-  return false;
-};
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -185,7 +178,7 @@ export const useHabitStore = create<HabitState>((set, get) => ({
   addHabit: async (newHabitData) => {
     const newHabit: HabitRecord = {
       ...newHabitData,
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       records: {},
       createdAt: new Date().toISOString()
     };
@@ -236,183 +229,22 @@ export const useHabitStore = create<HabitState>((set, get) => ({
 
   calculateGamification: () => {
     const { habits, currentStreak: prevCurrentStreak, bestStreak: prevBestStreak } = get();
-    if (habits.length === 0) {
-      set({ currentStreak: 0, bestStreak: 0, totalPoints: 0, level: 1, currentLevelPoints: 0, nextLevelPoints: 100, badges: [] });
-      return;
-    }
 
-    const today = formatDate(new Date());
-    let points = 0;
-    const allDates = new Set<string>();
+    const result = calculateGamification(habits);
 
-    habits.forEach(habit => {
-      let startDateStr = habit.createdAt ? habit.createdAt.split('T')[0] : null;
-      
-      const recordDates = Object.keys(habit.records).sort();
-      if (recordDates.length > 0) {
-        if (!startDateStr || recordDates[0] < startDateStr) {
-          startDateStr = recordDates[0];
-        }
-      }
+    const streakExtended = result.currentStreak > prevCurrentStreak && result.currentStreak > 0;
+    const newBestStreak = result.bestStreak > prevBestStreak && result.bestStreak > 0;
 
-      if (!startDateStr) return;
-
-      let endDateStr = today;
-      if (recordDates.length > 0 && recordDates[recordDates.length - 1] > endDateStr) {
-        endDateStr = recordDates[recordDates.length - 1];
-      }
-
-      let currentStr = startDateStr;
-      while (currentStr <= endDateStr) {
-        allDates.add(currentStr);
-        const record = habit.records[currentStr];
-        
-        const dateObj = new Date(currentStr);
-        const dayOfWeek = dateObj.getUTCDay();
-        
-        let isScheduled = false;
-        if (!habit.recurrence || habit.recurrence === 'daily') {
-          isScheduled = true;
-        } else if (habit.recurrence === 'specific_days') {
-          isScheduled = habit.specificDays?.includes(dayOfWeek) ?? false;
-        }
-
-        // Calculate points
-        if (habit.type === 'boolean') {
-          if (record === 'selesai') {
-            points += 20;
-          } else if (record === 'gagal') {
-            points -= 30;
-          } else if (record === 'izin') {
-            points -= 5;
-          } else if (!record && currentStr < today && isScheduled) {
-            // Missed past scheduled day
-            points -= 30;
-          } else if (!record && currentStr === today && isScheduled) {
-            // Empty today
-            points -= 5;
-          }
-        } else if (habit.type === 'quantitative') {
-          if (record !== undefined && Number(record) >= habit.target) {
-            points += 20;
-          } else if (record !== undefined && Number(record) < habit.target) {
-            points -= 30;
-          } else if (record === undefined && currentStr < today && isScheduled) {
-            // Missed past scheduled day
-            points -= 30;
-          } else if (record === undefined && currentStr === today && isScheduled) {
-            // Empty today
-            points -= 5;
-          }
-        }
-        
-        // Next day
-        const d = new Date(currentStr);
-        d.setUTCDate(d.getUTCDate() + 1);
-        currentStr = d.toISOString().split('T')[0];
-      }
-    });
-
-    points = Math.max(0, points);
-
-    const sortedDates = Array.from(allDates).filter(date => date <= today).sort();
-    
-    let current = 0;
-    let best = 0;
-    let tempStreak = 0;
-
-    for (let i = 0; i < sortedDates.length; i++) {
-      const dateStr = sortedDates[i];
-      const dateObj = new Date(dateStr);
-      const dayOfWeek = dateObj.getUTCDay();
-      
-      const scheduledHabits = habits.filter(habit => {
-        const habitStartDate = habit.createdAt ? habit.createdAt.split('T')[0] : '2000-01-01';
-        if (dateStr < habitStartDate) return false;
-
-        if (!habit.recurrence || habit.recurrence === 'daily') {
-          return true;
-        } else if (habit.recurrence === 'specific_days') {
-          return habit.specificDays?.includes(dayOfWeek) ?? false;
-        }
-        return false;
-      });
-
-      if (scheduledHabits.length > 0) {
-        let allCompletedOrIzin = true;
-        let anyFailed = false;
-        let hasSelesai = false;
-
-        scheduledHabits.forEach(habit => {
-          const record = habit.records[dateStr];
-          let isSuccess = false;
-          let isIzin = record === 'izin';
-          
-          if (habit.type === 'boolean') {
-            isSuccess = record === 'selesai';
-          } else {
-            isSuccess = record !== undefined && Number(record) >= habit.target;
-          }
-
-          if (isSuccess) {
-            hasSelesai = true;
-          } else if (!isIzin) {
-            allCompletedOrIzin = false;
-            if (record === 'gagal') {
-              anyFailed = true;
-            } else if (dateStr < today) {
-              anyFailed = true;
-            }
-          }
-        });
-
-        if (allCompletedOrIzin && hasSelesai) {
-          tempStreak++;
-          best = Math.max(best, tempStreak);
-          // Add streak bonus points (up to +50 per day)
-          const streakBonus = Math.min(50, tempStreak * 5);
-          points += streakBonus;
-        } else if (anyFailed) {
-          tempStreak = 0;
-        }
-      }
-    }
-    
-    current = tempStreak;
-
-    // Calculate level
-    let level = 1;
-    let currentLevelPoints = 0;
-    let nextLevelPoints = 100;
-    while (points >= nextLevelPoints) {
-      level++;
-      currentLevelPoints = nextLevelPoints;
-      nextLevelPoints = currentLevelPoints + 50 * (level + 1);
-    }
-
-    // Calculate badges based on new levels and streaks
-    const newBadges: string[] = [];
-    if (level >= 3) newBadges.push('Pemula');
-    if (level >= 10) newBadges.push('Konsisten');
-    if (level >= 25) newBadges.push('Master Habit');
-    if (level >= 50) newBadges.push('Legenda');
-    if (current >= 3) newBadges.push('On Fire');
-    if (best >= 10) newBadges.push('Unstoppable');
-    if (best >= 30) newBadges.push('Titan');
-
-    const streakExtended = current > prevCurrentStreak && current > 0;
-    const newBestStreak = best > prevBestStreak && best > 0;
-
-    set({ 
-      currentStreak: current, 
-      bestStreak: best, 
-      totalPoints: points, 
-      level,
-      currentLevelPoints,
-      nextLevelPoints,
-      badges: newBadges,
+    set({
+      currentStreak: result.currentStreak,
+      bestStreak: result.bestStreak,
+      totalPoints: result.totalPoints,
+      level: result.level,
+      currentLevelPoints: result.currentLevelPoints,
+      nextLevelPoints: result.nextLevelPoints,
+      badges: result.badges,
       streakExtended,
-      newBestStreak
+      newBestStreak,
     });
   }
 }));

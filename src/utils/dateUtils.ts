@@ -1,3 +1,12 @@
+/** Nama bulan singkat dalam Bahasa Indonesia, dipakai di chart dan history. */
+export const MONTH_NAMES_SHORT = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des',
+] as const;
+
+/** Nama hari singkat (Senin = index 0) */
+export const DAY_NAMES_SHORT = ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'] as const;
+
 export const getWeekDates = (date: Date = new Date()) => {
   const currentDay = date.getDay();
   const diff = date.getDate() - currentDay + (currentDay === 0 ? -6 : 1); // Adjust when day is Sunday

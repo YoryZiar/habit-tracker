@@ -1,16 +1,7 @@
 import { create } from 'zustand';
 import { googleSheetsService, TodoRecord } from '../services/googleSheetsService';
-import { useAuthStore } from './useHabitStore';
+import { handleAuthError } from '../utils/authUtils';
 import toast from 'react-hot-toast';
-
-const handleAuthError = (error: any) => {
-  if (error instanceof Error && error.message === 'UNAUTHORIZED') {
-    useAuthStore.getState().logout();
-    toast.error('Sesi Anda telah berakhir. Silakan masuk kembali.');
-    return true;
-  }
-  return false;
-};
 
 interface TodoState {
   todos: TodoRecord[];
@@ -55,7 +46,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
 
   addTodo: async (text: string, dueDate?: string, description?: string, priority?: 'low' | 'medium' | 'high') => {
     const newTodo: TodoRecord = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       text,
       completed: false,
       createdAt: new Date().toISOString(),
